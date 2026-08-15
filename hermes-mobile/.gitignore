@@ -1,0 +1,75 @@
+# Dependencies
+node_modules/
+
+# Expo / React Native
+.expo/
+.expo-shared/
+expo-env.d.ts
+dist/
+web-build/
+builds/
+
+# Native generated artifacts
+android/
+ios/
+android/.gradle/
+android/local.properties
+android/.idea/
+android/app/build/
+android/build/
+android/captures/
+android/.cxx/
+ios/Pods/
+ios/build/
+ios/DerivedData/
+ios/*.xcworkspace
+ios/*.xcuserstate
+
+# Metro
+.metro-health-check*
+.cache/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Testing / coverage
+coverage/
+.nyc_output/
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Signing / certificates / sensitive build artifacts
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+*.crt
+*.cer
+*.aab
+*.apk
+*.ipa
