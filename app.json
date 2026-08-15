@@ -1,11 +1,12 @@
 {
   "expo": {
-    "name": "hermes-mobile",
+    "name": "Hermes",
     "slug": "hermes-mobile",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0b0d10",
     "ios": {
       "supportsTablet": true
     },
