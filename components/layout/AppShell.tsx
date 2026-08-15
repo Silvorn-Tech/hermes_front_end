@@ -19,9 +19,9 @@ export function AppShell({ children }: Props) {
     return (
       <SafeAreaView style={{ flex: 1, flexDirection: 'row', backgroundColor: colors.background }} edges={['top', 'left', 'right']}>
         <Sidebar />
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
           <GlobalHeader />
-          <View style={{ flex: 1 }}>{children}</View>
+          <View style={{ flex: 1, backgroundColor: colors.background }}>{children}</View>
         </View>
       </SafeAreaView>
     );
@@ -30,7 +30,7 @@ export function AppShell({ children }: Props) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top', 'bottom']}>
       <GlobalHeader />
-      <View style={{ flex: 1 }}>{children}</View>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>{children}</View>
       <BottomNavigation />
     </SafeAreaView>
   );

@@ -7,7 +7,7 @@ import { SkeletonCard } from '../../../components/common/LoadingSkeleton';
 import { BotCard } from '../../../components/bots/BotCard';
 import { useHermesData } from '../../../hooks/HermesDataContext';
 import { useResponsive } from '../../../hooks/useResponsive';
-import { spacing } from '../../../constants';
+import { colors, spacing } from '../../../constants';
 
 export default function BotsScreen() {
   const { status, bots, toggleBotStatus } = useHermesData();
@@ -16,7 +16,7 @@ export default function BotsScreen() {
 
   if (status === 'loading') {
     return (
-      <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg }}>
+      <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg }}>
         <SkeletonCard lines={5} />
         <SkeletonCard lines={5} />
         <SkeletonCard lines={5} />
@@ -25,7 +25,10 @@ export default function BotsScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.xxl, maxWidth: 1280, width: '100%', alignSelf: 'center' }}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={{ padding: spacing.xl, gap: spacing.xxl, maxWidth: 1280, width: '100%', alignSelf: 'center' }}
+    >
       <Text variant="display">Bots</Text>
 
       {bots.length === 0 ? (

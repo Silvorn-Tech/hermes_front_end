@@ -32,7 +32,10 @@ export default function TradingScreen() {
   const getBot = (id: string) => bots.find((b) => b.id === id);
 
   return (
-    <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.xl, maxWidth: 1280, width: '100%', alignSelf: 'center' }}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={{ padding: spacing.xl, gap: spacing.xl, maxWidth: 1280, width: '100%', alignSelf: 'center' }}
+    >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: spacing.md }}>
         <Text variant="display">Trading</Text>
         <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'center' }}>

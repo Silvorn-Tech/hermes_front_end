@@ -24,7 +24,7 @@ export default function RiskScreen() {
 
   if (status === 'loading') {
     return (
-      <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.xl }}>
+      <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: spacing.xl, gap: spacing.xl }}>
         <SkeletonCard lines={2} />
         <SkeletonCard lines={4} />
       </ScrollView>
@@ -35,7 +35,10 @@ export default function RiskScreen() {
   const isQuiet = risk.level === 'normal';
 
   return (
-    <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.xxl, maxWidth: 900, width: '100%', alignSelf: 'center' }}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={{ padding: spacing.xl, gap: spacing.xxl, maxWidth: 900, width: '100%', alignSelf: 'center' }}
+    >
       <Text variant="display">Risk</Text>
 
       <Section title="Global risk state">
