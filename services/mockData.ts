@@ -1,70 +1,20 @@
-import { ActivityEvent, Bot, RiskSnapshot, Signal } from '../types';
+import { ActivityEvent, RiskSnapshot, Signal } from '../types';
 
 /**
  * Single source of truth for the mock data still in use. Portfolio,
- * positions, and orders used to live here too, but hooks/HermesDataContext.tsx
- * now fetches those from the real Hermes v2 backend (see services/api.ts) —
- * their mock versions were removed rather than kept around unused, since
- * nothing reads them anymore and their old shape no longer matches the real
- * Portfolio/Position/Order types. Bots, Signals, and Activity stay mocked
- * here because no backend domain exists for them yet.
+ * positions, orders, and bots used to live here too, but
+ * hooks/HermesDataContext.tsx now fetches those from the real Hermes v2
+ * backend (see services/api.ts) — their mock versions were removed rather
+ * than kept around unused, since nothing reads them anymore. Signals and
+ * Activity stay mocked here because no backend domain exists for them yet.
+ * Their `botId` fields still use the strings 'sentinel'/'equilibrium'/
+ * 'vortex' as flavor labels only — those no longer resolve to a real bot
+ * (real bots have arbitrary backend-issued ids).
  */
 
 const NOW = new Date();
 const minutesAgo = (n: number) => new Date(NOW.getTime() - n * 60_000).toISOString();
 const hoursAgo = (n: number) => minutesAgo(n * 60);
-
-// ---------------------------------------------------------------------------
-// Bots
-// ---------------------------------------------------------------------------
-
-export const bots: Bot[] = [
-  {
-    id: 'sentinel',
-    name: 'Sentinel',
-    profile: 'Conservative',
-    status: 'ACTIVE',
-    assetClass: 'CRYPTO',
-    executionVenue: 'BINANCE',
-    strategyModel: 'SIGNAL_BASED',
-    returnPct: 2.1,
-    exposure: { pct: 22 },
-    lastSignalSummary: 'Mantiene posiciones estables pese a la volatilidad reciente.',
-    lastSignalAt: hoursAgo(2),
-    strategyDescription:
-      'Prioriza preservación de capital. Opera con tamaños de posición reducidos, stops ajustados y evita entrar durante picos de volatilidad no confirmados.',
-  },
-  {
-    id: 'equilibrium',
-    name: 'Equilibrium',
-    profile: 'Balanced',
-    status: 'ACTIVE',
-    assetClass: 'CRYPTO',
-    executionVenue: 'BINANCE',
-    strategyModel: 'REGIME_BASED',
-    returnPct: 4.2,
-    exposure: { pct: 45 },
-    lastSignalSummary: 'Rebalanceó cartera tras cambio de tendencia en ETH.',
-    lastSignalAt: hoursAgo(1),
-    strategyDescription:
-      'Balancea entre preservación y crecimiento. Rebalancea exposición cuando detecta cambios sostenidos de tendencia, manteniendo un perfil de riesgo moderado.',
-  },
-  {
-    id: 'vortex',
-    name: 'Vortex',
-    profile: 'Aggressive',
-    status: 'ERROR',
-    assetClass: 'CRYPTO',
-    executionVenue: 'BINANCE',
-    strategyModel: 'GARCH',
-    returnPct: 7.6,
-    exposure: { pct: 68, limitPct: 60 },
-    lastSignalSummary: 'Redujo exposición tras un pico de volatilidad.',
-    lastSignalAt: minutesAgo(18),
-    strategyDescription:
-      'Busca capturar movimientos de corto plazo con mayor tamaño de posición. Opera con mayor frecuencia y tolera drawdowns más profundos a cambio de mayor retorno esperado.',
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Activity (facts)
@@ -160,7 +110,7 @@ export const riskSnapshot: RiskSnapshot = {
   headline: 'Riesgo crítico: exposición diaria excedida',
   description: 'El límite diario de exposure fue excedido. Revisá tu exposición antes de continuar.',
   exposureTotalPct: 58.3,
-  exposureByBot: { sentinel: 22, equilibrium: 45, vortex: 68 },
+  exposureByRiskProfile: { SENTINEL: 22, EQUILIBRIUM: 45, VORTEX: 68 },
   drawdownCurrentPct: 4.2,
   drawdownMaxPct: 12,
   dailyLimits: [
@@ -168,7 +118,7 @@ export const riskSnapshot: RiskSnapshot = {
     { label: 'Pérdida diaria máxima', currentPct: 1.8, limitPct: 5 },
     { label: 'Concentración por símbolo', currentPct: 34, limitPct: 40 },
   ],
-  riskByBot: { sentinel: 'normal', equilibrium: 'elevated', vortex: 'critical' },
+  riskByRiskProfile: { SENTINEL: 'normal', EQUILIBRIUM: 'elevated', VORTEX: 'critical' },
   concentration: [
     { symbol: 'BTCUSDT', pct: 34 },
     { symbol: 'ETHUSDT', pct: 26 },
