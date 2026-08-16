@@ -5,12 +5,12 @@ import { Text } from '../common/Text';
 import { Card } from '../common/Card';
 import { EmptyState } from '../common/EmptyState';
 import { colors, spacing, bots as botColors } from '../../constants';
-import { Bot, Position } from '../../types';
-import { formatPercent, formatSignedCurrency } from '../../utils/format';
+import { Bot, BotId, Position } from '../../types';
+import { formatOrDash, formatPercent, formatSignedCurrency } from '../../utils/format';
 
 interface Props {
   positions: Position[];
-  getBotById: (id: string) => Bot | undefined;
+  getBotById: (id: BotId | undefined) => Bot | undefined;
 }
 
 /** Portfolio-feel summary — a handful of rows, not a dense trading table. */
@@ -35,7 +35,7 @@ export function PositionsSummary({ positions, getBotById }: Props) {
         <View style={{ gap: 0 }}>
           {shown.map((position, i) => {
             const bot = getBotById(position.botId);
-            const positive = position.unrealizedPnl >= 0;
+            const positive = (position.unrealizedPnl ?? 0) >= 0;
             return (
               <Pressable key={position.id} onPress={() => router.push(`/trading/position/${position.id}` as any)}>
                 <View
@@ -57,10 +57,10 @@ export function PositionsSummary({ positions, getBotById }: Props) {
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text variant="body" numeric style={{ color: positive ? colors.success : colors.danger }}>
-                      {formatSignedCurrency(position.unrealizedPnl)}
+                      {formatOrDash(position.unrealizedPnl, formatSignedCurrency)}
                     </Text>
                     <Text variant="caption" color="muted" numeric>
-                      {formatPercent(position.unrealizedPnlPct, { signed: true })}
+                      {formatOrDash(position.unrealizedPnlPct, (v) => formatPercent(v, { signed: true }))}
                     </Text>
                   </View>
                 </View>

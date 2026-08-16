@@ -11,13 +11,14 @@ import { useHermesData } from '../../hooks/HermesDataContext';
 import { useResponsive } from '../../hooks/useResponsive';
 import { spacing } from '../../constants';
 import { pickTopSignal } from '../../utils/signalPriority';
+import { BotId } from '../../types';
 
 export default function DashboardScreen() {
   const { status, portfolio, bots, positions, signals } = useHermesData();
   const { isDesktop } = useResponsive();
   const router = useRouter();
 
-  const getBotById = (id: string) => bots.find((b) => b.id === id);
+  const getBotById = (id: BotId | undefined) => bots.find((b) => b.id === id);
   const topSignal = pickTopSignal(signals);
 
   if (status === 'loading') {

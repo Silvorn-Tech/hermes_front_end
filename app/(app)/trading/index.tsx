@@ -3,7 +3,9 @@ import { ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Text } from '../../../components/common/Text';
 import { Tabs } from '../../../components/common/Tabs';
+import { Button } from '../../../components/common/Button';
 import { EmptyState } from '../../../components/common/EmptyState';
+import { ErrorState } from '../../../components/common/ErrorState';
 import { SkeletonList } from '../../../components/common/LoadingSkeleton';
 import { PositionRow, PositionTableHeader } from '../../../components/trading/PositionRow';
 import { PositionCard } from '../../../components/trading/PositionCard';
@@ -11,6 +13,7 @@ import { OrderRow, OrderTableHeader, OrderCard } from '../../../components/tradi
 import { useHermesData } from '../../../hooks/HermesDataContext';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { colors, radius, spacing } from '../../../constants';
+import { BotId } from '../../../types';
 
 const mainTabs = [
   { key: 'positions', label: 'Positions' },
@@ -23,13 +26,14 @@ const densityTabs = [
 ];
 
 export default function TradingScreen() {
-  const { status, positions, orders, bots } = useHermesData();
+  const { status, positions, positionsError, orders, ordersError, bots, refreshPositions, refreshOrders } =
+    useHermesData();
   const { isDesktop } = useResponsive();
   const router = useRouter();
   const [tab, setTab] = useState<'positions' | 'orders'>('positions');
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
 
-  const getBot = (id: string) => bots.find((b) => b.id === id);
+  const getBot = (id: BotId | undefined) => bots.find((b) => b.id === id);
 
   return (
     <ScrollView
@@ -43,13 +47,16 @@ export default function TradingScreen() {
           {isDesktop && tab === 'positions' ? (
             <Tabs items={densityTabs} activeKey={density} onChange={(k) => setDensity(k as typeof density)} />
           ) : null}
+          <Button label="Nueva orden" onPress={() => router.push('/trading/new-order' as any)} />
         </View>
       </View>
 
       {status === 'loading' ? (
         <SkeletonList rows={5} />
       ) : tab === 'positions' ? (
-        positions.length === 0 ? (
+        positionsError ? (
+          <ErrorState title="No se pudieron cargar las posiciones." description={positionsError} onRetry={refreshPositions} />
+        ) : positions.length === 0 ? (
           <EmptyState title="No hay posiciones abiertas." />
         ) : isDesktop ? (
           <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.surface, overflow: 'hidden' }}>
@@ -71,6 +78,8 @@ export default function TradingScreen() {
             ))}
           </View>
         )
+      ) : ordersError ? (
+        <ErrorState title="No se pudieron cargar las órdenes." description={ordersError} onRetry={refreshOrders} />
       ) : orders.length === 0 ? (
         <EmptyState title="No hay órdenes registradas." />
       ) : isDesktop ? (
