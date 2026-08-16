@@ -21,6 +21,14 @@ export interface PendingRiskAction {
   description: string;
 }
 
+/** Maps to the backend's global kill switch (`TRADING_ENABLED`) once it's
+ * exposed for reading — mock/preview data until then, never inferred from
+ * anything else. */
+export interface CircuitBreakerState {
+  active: boolean;
+  reason: string | null;
+}
+
 export interface RiskSnapshot {
   level: RiskLevel;
   headline: string;
@@ -33,6 +41,7 @@ export interface RiskSnapshot {
   riskByBot: Record<BotId, RiskLevel>;
   concentration: ConcentrationItem[];
   history: RiskHistoryPoint[];
+  circuitBreaker: CircuitBreakerState;
   pendingAction?: PendingRiskAction;
 }
 

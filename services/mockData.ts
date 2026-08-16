@@ -1,4 +1,4 @@
-import { ActivityEvent, Bot, BotId, RiskSnapshot, Signal } from '../types';
+import { ActivityEvent, Bot, RiskSnapshot, Signal } from '../types';
 
 /**
  * Single source of truth for the mock data still in use. Portfolio,
@@ -23,7 +23,10 @@ export const bots: Bot[] = [
     id: 'sentinel',
     name: 'Sentinel',
     profile: 'Conservative',
-    status: 'active',
+    status: 'ACTIVE',
+    assetClass: 'CRYPTO',
+    executionVenue: 'BINANCE',
+    strategyModel: 'SIGNAL_BASED',
     returnPct: 2.1,
     exposure: { pct: 22 },
     lastSignalSummary: 'Mantiene posiciones estables pese a la volatilidad reciente.',
@@ -35,7 +38,10 @@ export const bots: Bot[] = [
     id: 'equilibrium',
     name: 'Equilibrium',
     profile: 'Balanced',
-    status: 'active',
+    status: 'ACTIVE',
+    assetClass: 'CRYPTO',
+    executionVenue: 'BINANCE',
+    strategyModel: 'REGIME_BASED',
     returnPct: 4.2,
     exposure: { pct: 45 },
     lastSignalSummary: 'Rebalanceó cartera tras cambio de tendencia en ETH.',
@@ -47,7 +53,10 @@ export const bots: Bot[] = [
     id: 'vortex',
     name: 'Vortex',
     profile: 'Aggressive',
-    status: 'alert',
+    status: 'ERROR',
+    assetClass: 'CRYPTO',
+    executionVenue: 'BINANCE',
+    strategyModel: 'GARCH',
     returnPct: 7.6,
     exposure: { pct: 68, limitPct: 60 },
     lastSignalSummary: 'Redujo exposición tras un pico de volatilidad.',
@@ -56,10 +65,6 @@ export const bots: Bot[] = [
       'Busca capturar movimientos de corto plazo con mayor tamaño de posición. Opera con mayor frecuencia y tolera drawdowns más profundos a cambio de mayor retorno esperado.',
   },
 ];
-
-export function getBot(id: BotId): Bot | undefined {
-  return bots.find((b) => b.id === id);
-}
 
 // ---------------------------------------------------------------------------
 // Activity (facts)
@@ -146,10 +151,6 @@ export const signals: Signal[] = [
   },
 ];
 
-export function getSignal(id: string): Signal | undefined {
-  return signals.find((s) => s.id === id);
-}
-
 // ---------------------------------------------------------------------------
 // Risk
 // ---------------------------------------------------------------------------
@@ -183,6 +184,7 @@ export const riskSnapshot: RiskSnapshot = {
     { date: 'Sáb', level: 'alert' },
     { date: 'Hoy', level: 'critical' },
   ],
+  circuitBreaker: { active: false, reason: null },
   pendingAction: {
     label: 'Revisar exposición',
     description: 'El límite diario de exposure fue excedido. Revisá tu exposición antes de continuar.',
