@@ -1,40 +1,368 @@
 /**
- * Placeholder for the real Hermes backend client.
+ * Real Hermes v2 backend client.
  *
- * None of these are called yet — every hook in `hooks/` currently reads
- * straight from `services/mockData.ts`. This file exists so the future
- * integration has an obvious landing spot: swap the hook implementations to
- * call these functions (wired to fetch/axios + auth) instead of the mock
- * getters, without having to touch any screen or component.
+ * Every function here calls exactly one of the 9 endpoints Hermes v2
+ * actually implements (see hermes_v2's docs/architecture/trading.md) —
+ * nothing is assumed or invented. There is no Bots/Signals/Activity/Risk-
+ * snapshot client here because no such endpoint exists yet; those stay
+ * mock-sourced in hooks/HermesDataContext.tsx.
  *
- * Authentication/authorization has its own contract — see services/auth.ts
- * and docs/authentication.md. Once real data calls are wired up, they should
- * attach the session's accessToken (from useAuth()) as a Bearer token here.
+ * Auth is cookie-based, exactly like services/auth.ts: every request sends
+ * `credentials: 'include'` and the `hermes_session` httpOnly cookie does
+ * the rest. This file never reads, stores, or sends a bearer token — the
+ * backend has none, and introducing one here would diverge from the
+ * server-side-session architecture the rest of the app already uses.
+ *
+ * The frontend never talks to Binance directly, never sees a Binance
+ * credential, and never signs a request — every one of these calls goes to
+ * `EXPO_PUBLIC_API_URL` (Hermes), which is the only network boundary this
+ * file knows about.
  */
 
 import {
-  ActivityEvent,
-  Bot,
+  Balance,
   Order,
+  OrderSide,
+  OrderType,
   Portfolio,
   Position,
-  RiskSnapshot,
-  Signal,
 } from '../types';
+
+export class HermesApiError extends Error {
+  readonly status: number;
+  readonly detail: string;
+  readonly retryAfterSeconds: number | null;
+
+  constructor(status: number, detail: string, retryAfterSeconds: number | null = null) {
+    super(detail);
+    this.name = 'HermesApiError';
+    this.status = status;
+    this.detail = detail;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+function baseUrl(): string {
+  const url = process.env.EXPO_PUBLIC_API_URL;
+  if (!url) {
+    throw new Error('EXPO_PUBLIC_API_URL is not set. See .env.example.');
+  }
+  return url.replace(/\/+$/, '');
+}
+
+interface RequestOptions {
+  method?: 'GET' | 'POST';
+  query?: Record<string, string | undefined>;
+  body?: unknown;
+  idempotencyKey?: string;
+}
+
+/**
+ * The one place every fetch call goes through: builds the URL, attaches
+ * the session cookie, and on a non-2xx response throws a HermesApiError
+ * built only from the backend's own `detail` field — never the raw body,
+ * headers, or a stack trace.
+ */
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const url = new URL(`${baseUrl()}${path}`);
+  if (options.query) {
+    for (const [key, value] of Object.entries(options.query)) {
+      if (value !== undefined) url.searchParams.set(key, value);
+    }
+  }
+
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (options.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
+  if (options.idempotencyKey) {
+    headers['Idempotency-Key'] = options.idempotencyKey;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      method: options.method ?? 'GET',
+      credentials: 'include',
+      headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
+  } catch {
+    throw new HermesApiError(0, 'No se pudo contactar al backend de Hermes.');
+  }
+
+  if (!response.ok) {
+    let detail = `Hermes respondió ${response.status}.`;
+    try {
+      const payload = await response.json();
+      if (payload && typeof payload.detail === 'string') {
+        detail = payload.detail;
+      }
+    } catch {
+      // Non-JSON error body — keep the generic message, never surface raw text.
+    }
+    const retryAfterHeader = response.headers.get('Retry-After');
+    const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : null;
+    throw new HermesApiError(
+      response.status,
+      detail,
+      Number.isFinite(retryAfterSeconds) ? retryAfterSeconds : null
+    );
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  return (await response.json()) as T;
+}
+
+// --- wire shapes (snake_case, decimal-string fields, exactly what Hermes sends) ---
+
+interface WireBalance {
+  asset: string;
+  free: string;
+  locked: string;
+  value_quote: string | null;
+  priced: boolean;
+}
+
+interface WirePortfolio {
+  quote_asset: string;
+  total_value_quote: string;
+  as_of: string;
+  balances: WireBalance[];
+}
+
+interface WirePosition {
+  symbol: string;
+  asset: string;
+  quantity: string;
+  average_entry_price: string | null;
+  current_price: string | null;
+  value_quote: string | null;
+  unrealized_pnl_quote: string | null;
+  unrealized_pnl_pct: string | null;
+}
+
+interface WireOrder {
+  id: string;
+  symbol: string;
+  side: OrderSide;
+  order_type: OrderType;
+  status: string;
+  requested_quantity: string;
+  requested_price: string | null;
+  executed_quantity: string;
+  average_fill_price: string | null;
+  binance_order_id: string | null;
+  error_message: string | null;
+  created_at: string | null;
+  submitted_at: string | null;
+  terminal_at: string | null;
+}
+
+export interface MarketData {
+  symbol: string;
+  lastPrice: number;
+  priceChangePercent: number;
+  highPrice: number;
+  lowPrice: number;
+  volume: number;
+}
+
+interface WireMarketData {
+  symbol: string;
+  last_price: string;
+  price_change_percent: string;
+  high_price: string;
+  low_price: string;
+  volume: string;
+}
+
+export interface OrderActionResult {
+  order: Order | null;
+  status: string;
+  reason: string | null;
+}
+
+interface WireOrderActionResult {
+  order: WireOrder | null;
+  status: string;
+  reason: string | null;
+}
+
+export interface CreateOrderRequest {
+  symbol: string;
+  side: OrderSide;
+  type: OrderType;
+  /** Kept as the raw string the user typed — never round-tripped through a
+   * JS `number`, so the exact decimal the backend validates is exactly
+   * what was sent, with no floating-point rounding in between. */
+  quantity: string;
+  price?: string;
+}
+
+// --- decimal-string -> display-number mapping (display only, never sent back) ---
+
+function toNumber(value: string): number {
+  return Number(value);
+}
+
+function toNullableNumber(value: string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function mapBalance(wire: WireBalance): Balance {
+  return {
+    asset: wire.asset,
+    free: toNumber(wire.free),
+    locked: toNumber(wire.locked),
+    valueQuote: toNullableNumber(wire.value_quote),
+    priced: wire.priced,
+  };
+}
+
+function mapPortfolio(wire: WirePortfolio): Portfolio {
+  return {
+    totalValueQuote: toNumber(wire.total_value_quote),
+    quoteAsset: wire.quote_asset,
+    asOf: wire.as_of,
+    balances: wire.balances.map(mapBalance),
+    dailyPnl: null,
+    dailyPnlPct: null,
+    equityCurves: null,
+  };
+}
+
+function mapPosition(wire: WirePosition): Position {
+  return {
+    id: wire.symbol,
+    symbol: wire.symbol,
+    direction: 'long',
+    size: toNumber(wire.quantity),
+    entryPrice: toNullableNumber(wire.average_entry_price),
+    currentPrice: toNullableNumber(wire.current_price),
+    valueQuote: toNullableNumber(wire.value_quote),
+    unrealizedPnl: toNullableNumber(wire.unrealized_pnl_quote),
+    unrealizedPnlPct: toNullableNumber(wire.unrealized_pnl_pct),
+  };
+}
+
+function mapOrder(wire: WireOrder): Order {
+  return {
+    id: wire.id,
+    symbol: wire.symbol,
+    side: wire.side,
+    type: wire.order_type,
+    status: wire.status as Order['status'],
+    size: toNumber(wire.requested_quantity),
+    price: toNullableNumber(wire.requested_price),
+    executedQuantity: toNumber(wire.executed_quantity),
+    averageFillPrice: toNullableNumber(wire.average_fill_price),
+    errorMessage: wire.error_message,
+    binanceOrderId: wire.binance_order_id,
+    timestamp: wire.created_at ?? wire.submitted_at ?? new Date().toISOString(),
+  };
+}
+
+function mapMarketData(wire: WireMarketData): MarketData {
+  return {
+    symbol: wire.symbol,
+    lastPrice: toNumber(wire.last_price),
+    priceChangePercent: toNumber(wire.price_change_percent),
+    highPrice: toNumber(wire.high_price),
+    lowPrice: toNumber(wire.low_price),
+    volume: toNumber(wire.volume),
+  };
+}
+
+function mapOrderActionResult(wire: WireOrderActionResult): OrderActionResult {
+  return {
+    order: wire.order ? mapOrder(wire.order) : null,
+    status: wire.status,
+    reason: wire.reason,
+  };
+}
+
+// --- public client ---
 
 export interface HermesApiClient {
   getPortfolio(): Promise<Portfolio>;
-  getBots(): Promise<Bot[]>;
+  getBalances(): Promise<Balance[]>;
+  getMarketData(symbol: string): Promise<MarketData>;
   getPositions(): Promise<Position[]>;
-  getOrders(): Promise<Order[]>;
-  getSignals(): Promise<Signal[]>;
-  getActivityEvents(): Promise<ActivityEvent[]>;
-  getRiskSnapshot(): Promise<RiskSnapshot>;
-  pauseBot(botId: string): Promise<void>;
-  resumeBot(botId: string): Promise<void>;
-  closePosition(positionId: string): Promise<void>;
-  cancelOrder(orderId: string): Promise<void>;
+  getOrders(params?: { symbol?: string; status?: string }): Promise<{ orders: Order[]; count: number }>;
+  getOrder(id: string): Promise<Order>;
+  createOrder(body: CreateOrderRequest, idempotencyKey: string): Promise<OrderActionResult>;
+  cancelOrder(orderId: string, idempotencyKey: string): Promise<OrderActionResult>;
+  closePosition(symbol: string, idempotencyKey: string): Promise<OrderActionResult>;
 }
 
-export const NOT_IMPLEMENTED_MESSAGE =
-  'Hermes API client is not implemented yet. This app currently runs entirely on mock data (see services/mockData.ts).';
+class HermesApiClientImpl implements HermesApiClient {
+  async getPortfolio(): Promise<Portfolio> {
+    const wire = await request<WirePortfolio>('/portfolio');
+    return mapPortfolio(wire);
+  }
+
+  async getBalances(): Promise<Balance[]> {
+    const wire = await request<{ balances: WireBalance[] }>('/balances');
+    return wire.balances.map(mapBalance);
+  }
+
+  async getMarketData(symbol: string): Promise<MarketData> {
+    const wire = await request<WireMarketData>('/market-data', { query: { symbol } });
+    return mapMarketData(wire);
+  }
+
+  async getPositions(): Promise<Position[]> {
+    const wire = await request<{ positions: WirePosition[] }>('/positions');
+    return wire.positions.map(mapPosition);
+  }
+
+  async getOrders(params?: { symbol?: string; status?: string }): Promise<{ orders: Order[]; count: number }> {
+    const wire = await request<{ orders: WireOrder[]; count: number }>('/orders', {
+      query: { symbol: params?.symbol, status: params?.status },
+    });
+    return { orders: wire.orders.map(mapOrder), count: wire.count };
+  }
+
+  async getOrder(id: string): Promise<Order> {
+    const wire = await request<WireOrder>(`/orders/${encodeURIComponent(id)}`);
+    return mapOrder(wire);
+  }
+
+  async createOrder(body: CreateOrderRequest, idempotencyKey: string): Promise<OrderActionResult> {
+    const wire = await request<WireOrderActionResult>('/orders', {
+      method: 'POST',
+      idempotencyKey,
+      body: {
+        symbol: body.symbol,
+        side: body.side,
+        type: body.type,
+        quantity: body.quantity,
+        price: body.price,
+      },
+    });
+    return mapOrderActionResult(wire);
+  }
+
+  async cancelOrder(orderId: string, idempotencyKey: string): Promise<OrderActionResult> {
+    const wire = await request<WireOrderActionResult>(
+      `/orders/${encodeURIComponent(orderId)}/cancel`,
+      { method: 'POST', idempotencyKey }
+    );
+    return mapOrderActionResult(wire);
+  }
+
+  async closePosition(symbol: string, idempotencyKey: string): Promise<OrderActionResult> {
+    const wire = await request<WireOrderActionResult>(
+      `/positions/${encodeURIComponent(symbol)}/close`,
+      { method: 'POST', idempotencyKey }
+    );
+    return mapOrderActionResult(wire);
+  }
+}
+
+export const apiClient: HermesApiClient = new HermesApiClientImpl();
