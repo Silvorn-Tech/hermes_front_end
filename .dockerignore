@@ -1,0 +1,10 @@
+node_modules
+.git
+.expo
+.expo-shared
+dist
+web-build
+*.log
+.env
+.env.*
+!.env.example

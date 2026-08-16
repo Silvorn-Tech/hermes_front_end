@@ -5,6 +5,7 @@ node_modules/
 .expo/
 .expo-shared/
 web-build/
+dist/
 
 # Native builds
 *.jks
