@@ -52,13 +52,19 @@ export const risk = {
   critical: '#de3a46',
 } as const;
 
+/**
+ * Keyed by risk profile (SENTINEL/EQUILIBRIUM/VORTEX), not by a specific
+ * bot's identity — real bots are arbitrary, backend-issued entities, so
+ * any number of bots sharing a profile share a color family. Named `bots`
+ * for backwards-compat with existing call sites (`colors.bots[...]`).
+ */
 export const bots = {
   /** oklch(0.65 0.10 230) */
-  sentinel: '#449ac0',
+  SENTINEL: '#449ac0',
   /** oklch(0.68 0.09 165) */
-  equilibrium: '#5eaa8a',
+  EQUILIBRIUM: '#5eaa8a',
   /** oklch(0.62 0.14 15) */
-  vortex: '#cc5e6b',
+  VORTEX: '#cc5e6b',
 } as const;
 
 export const colors = {
