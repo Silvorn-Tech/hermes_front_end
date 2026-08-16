@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { Text } from '../common/Text';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
@@ -28,14 +29,25 @@ const sourceLabel: Record<Signal['source'], string> = {
 interface Props {
   signal: Signal;
   relatedEvents: ActivityEvent[];
-  onAction?: () => void;
 }
 
-export function SignalCard({ signal, relatedEvents, onAction }: Props) {
+/** Where "Revisar" for this signal should actually take the user — real
+ * navigation to the screen that owns the relevant data, never a dead
+ * button. `undefined` when there's no sensible target, in which case the
+ * action button simply isn't rendered even if `actionLabel` is set. */
+function resolveActionRoute(signal: Signal): string | undefined {
+  if (signal.source === 'risk') return '/risk';
+  if (signal.botId) return `/bots/${signal.botId}`;
+  return undefined;
+}
+
+export function SignalCard({ signal, relatedEvents }: Props) {
+  const router = useRouter();
   const [expanded, setExpanded] = useState(false);
   const meta = levelMeta[signal.level];
   const isActionRequired = signal.level === 'action_required';
   const isEmphasized = signal.level === 'alert' || isActionRequired;
+  const actionRoute = resolveActionRoute(signal);
 
   return (
     <Card
@@ -101,8 +113,8 @@ export function SignalCard({ signal, relatedEvents, onAction }: Props) {
         </View>
       ) : null}
 
-      {isActionRequired && signal.actionLabel && onAction ? (
-        <Button label={signal.actionLabel} variant="danger" onPress={onAction} />
+      {isActionRequired && signal.actionLabel && actionRoute ? (
+        <Button label={signal.actionLabel} variant="danger" onPress={() => router.push(actionRoute as any)} />
       ) : null}
     </Card>
   );
