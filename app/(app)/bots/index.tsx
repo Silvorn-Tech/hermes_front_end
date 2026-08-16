@@ -4,13 +4,15 @@ import { useRouter } from 'expo-router';
 import { Text } from '../../../components/common/Text';
 import { EmptyState } from '../../../components/common/EmptyState';
 import { SkeletonCard } from '../../../components/common/LoadingSkeleton';
+import { PreviewBanner } from '../../../components/common/PreviewBanner';
+import { Button } from '../../../components/common/Button';
 import { BotCard } from '../../../components/bots/BotCard';
 import { useHermesData } from '../../../hooks/HermesDataContext';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { colors, spacing } from '../../../constants';
 
 export default function BotsScreen() {
-  const { status, bots, toggleBotStatus } = useHermesData();
+  const { status, bots, setBotLifecycleStatus } = useHermesData();
   const { isDesktop } = useResponsive();
   const router = useRouter();
 
@@ -29,7 +31,12 @@ export default function BotsScreen() {
       style={{ flex: 1, backgroundColor: colors.background }}
       contentContainerStyle={{ padding: spacing.xl, gap: spacing.xxl, maxWidth: 1280, width: '100%', alignSelf: 'center' }}
     >
-      <Text variant="display">Bots</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: spacing.md }}>
+        <Text variant="display">Bots</Text>
+        <Button label="Nuevo bot" onPress={() => router.push('/bots/form' as any)} />
+      </View>
+
+      <PreviewBanner variant="preview" label="Vista previa — Bot API pendiente de backend" />
 
       {bots.length === 0 ? (
         <EmptyState title="Activa un bot para empezar a operar." />
@@ -41,7 +48,7 @@ export default function BotsScreen() {
                 bot={bot}
                 variant="full"
                 onPress={() => router.push(`/bots/${bot.id}` as any)}
-                onToggleStatus={() => toggleBotStatus(bot.id)}
+                onToggleStatus={() => setBotLifecycleStatus(bot.id, bot.status === 'PAUSED' ? 'ACTIVE' : 'PAUSED')}
               />
             </View>
           ))}

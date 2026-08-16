@@ -11,15 +11,17 @@ import { Bot } from '../../types';
 import { formatPercent, formatRelativeTime } from '../../utils/format';
 
 const statusLabel: Record<Bot['status'], string> = {
-  active: 'Activo',
-  paused: 'Pausado',
-  alert: 'Alerta',
+  ACTIVE: 'Activo',
+  PAUSED: 'Pausado',
+  STOPPED: 'Detenido',
+  ERROR: 'Error',
 };
 
 const statusTone: Record<Bot['status'], string> = {
-  active: colors.success,
-  paused: colors.textMuted,
-  alert: colors.risk.alert,
+  ACTIVE: colors.success,
+  PAUSED: colors.textMuted,
+  STOPPED: colors.textMuted,
+  ERROR: colors.danger,
 };
 
 interface Props {
@@ -40,7 +42,7 @@ export function BotCard({ bot, variant = 'full', onPress, onToggleStatus }: Prop
 
   const header = (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-      <BotGlyph botId={bot.id} active={bot.status === 'active'} />
+      <BotGlyph botId={bot.id} active={bot.status === 'ACTIVE'} />
       <View style={{ flex: 1 }}>
         <Text variant="cardTitle">{bot.name}</Text>
         <Text variant="caption" color="muted">
@@ -78,7 +80,7 @@ export function BotCard({ bot, variant = 'full', onPress, onToggleStatus }: Prop
   }
 
   return (
-    <Card style={{ gap: spacing.lg }} borderColor={bot.status === 'alert' ? colors.risk.alert : undefined}>
+    <Card style={{ gap: spacing.lg }} borderColor={bot.status === 'ERROR' ? colors.danger : undefined}>
       {/* Navigation target excludes the action button below, so the two never fight over the same touch. */}
       <Pressable onPress={onPress} style={{ gap: spacing.lg }}>
         {header}
@@ -106,14 +108,16 @@ export function BotCard({ bot, variant = 'full', onPress, onToggleStatus }: Prop
         </View>
       </Pressable>
 
-      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-        <Button
-          label={bot.status === 'paused' ? 'Reanudar' : 'Pausar'}
-          variant="secondary"
-          onPress={() => onToggleStatus?.()}
-          style={{ flex: 1 }}
-        />
-      </View>
+      {bot.status === 'ACTIVE' || bot.status === 'PAUSED' ? (
+        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+          <Button
+            label={bot.status === 'PAUSED' ? 'Reanudar' : 'Pausar'}
+            variant="secondary"
+            onPress={() => onToggleStatus?.()}
+            style={{ flex: 1 }}
+          />
+        </View>
+      ) : null}
     </Card>
   );
 }

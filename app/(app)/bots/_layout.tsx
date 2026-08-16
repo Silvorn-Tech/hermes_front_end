@@ -7,6 +7,7 @@ export default function BotsLayout() {
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="[id]" options={{ presentation: 'transparentModal', animation: 'none' }} />
+      <Stack.Screen name="form" options={{ presentation: 'transparentModal', animation: 'none' }} />
     </Stack>
   );
 }
