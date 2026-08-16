@@ -1,22 +1,21 @@
 /**
- * Authentication vs. authorization are tracked as two separate facts:
- * Google can successfully authenticate a person while Hermes' backend still
- * refuses to authorize them. `AuthStatus` distinguishes every state on that
- * path so the UI can react precisely instead of collapsing everything into
- * "logged in" / "logged out".
+ * Authentication vs. authorization are tracked as two separate facts.
+ * Google confirms identity; Hermes confirms authorization. In the real v2
+ * backend contract, the frontend is session-less and relies entirely on the
+ * server-set cookie and a GET /auth/me boot check.
  */
 export type AuthStatus =
-  /** Reading a persisted session on app boot. Nothing renders until this resolves. */
+  /** Reading the current backend session on app boot. Nothing renders until this resolves. */
   | 'initializing'
-  /** No session. Idle at the login screen. */
+  /** No valid session. Idle at the login screen. */
   | 'signed_out'
-  /** The Google OAuth prompt is open. */
+  /** The backend OAuth flow is active and the browser is redirecting to Google. */
   | 'google_in_progress'
-  /** Google succeeded; waiting on the Hermes backend to authorize the identity. */
+  /** The login redirect just returned; the app is re-validating the backend session. */
   | 'authorizing'
-  /** Backend confirmed the identity is authorized. A session is active. */
+  /** The backend confirmed the user is authenticated and authorized. */
   | 'authorized'
-  /** Backend confirmed the identity is NOT authorized to use Hermes. */
+  /** The user is authenticated with Google but not allowed to use Hermes. */
   | 'unauthorized'
   /** The Google sign-in step itself failed or was cancelled. */
   | 'google_error'
@@ -30,8 +29,7 @@ export interface AuthUser {
   avatarUrl?: string;
 }
 
-/** The active Hermes session once a user is authorized. */
+/** The current authenticated Hermes user, as reported by the backend cookie-based session. */
 export interface HermesSession {
-  accessToken: string;
   user: AuthUser;
 }
