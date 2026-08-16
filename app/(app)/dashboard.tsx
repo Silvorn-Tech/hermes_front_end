@@ -55,7 +55,11 @@ export default function DashboardScreen() {
         </View>
       ) : (
         <>
-          <PerformanceCard portfolio={portfolio} />
+          {portfolioError ? (
+            <ErrorState title="No se pudo cargar el portfolio." description={portfolioError} onRetry={refresh} />
+          ) : (
+            <PerformanceCard portfolio={portfolio} />
+          )}
           <View style={{ gap: spacing.md }}>
             {bots.map((bot) => (
               <BotCard key={bot.id} bot={bot} variant="compact" onPress={() => router.push(`/bots/${bot.id}` as any)} />
