@@ -35,7 +35,7 @@ export function PositionCard({ position, bot, onPress }: Props) {
 
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: bot ? botColors[bot.id] : colors.textMuted }} />
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: bot ? botColors[bot.riskProfile] : colors.textMuted }} />
             <Text variant="caption" color="secondary">
               {bot?.name ?? '—'}
             </Text>

@@ -49,7 +49,7 @@ export function PositionsSummary({ positions, getBotById }: Props) {
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: bot ? botColors[bot.id] : colors.textMuted }} />
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: bot ? botColors[bot.riskProfile] : colors.textMuted }} />
                     <Text variant="body">{position.symbol}</Text>
                     <Text variant="caption" color="muted">
                       {position.direction === 'long' ? 'Long' : 'Short'}

@@ -33,7 +33,7 @@ export default function TradingScreen() {
   const [tab, setTab] = useState<'positions' | 'orders'>('positions');
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
 
-  const getBot = (id: BotId | undefined) => bots.find((b) => b.id === id);
+  const getBot = (id: BotId | null | undefined) => bots.find((b) => b.id === id);
 
   return (
     <ScrollView

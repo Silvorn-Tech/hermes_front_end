@@ -15,7 +15,8 @@ import { pickTopSignal } from '../../utils/signalPriority';
 import { BotId } from '../../types';
 
 export default function DashboardScreen() {
-  const { status, portfolio, portfolioError, positions, positionsError, bots, signals, refresh } = useHermesData();
+  const { status, portfolio, portfolioError, positions, positionsError, bots, botsError, signals, refresh } =
+    useHermesData();
   const { isDesktop } = useResponsive();
   const router = useRouter();
 
@@ -48,9 +49,13 @@ export default function DashboardScreen() {
             )}
           </View>
           <View style={{ flex: 38, gap: spacing.md }}>
-            {bots.map((bot) => (
-              <BotCard key={bot.id} bot={bot} variant="compact" onPress={() => router.push(`/bots/${bot.id}` as any)} />
-            ))}
+            {botsError ? (
+              <ErrorState title="No se pudieron cargar los bots." description={botsError} onRetry={refresh} />
+            ) : (
+              bots.map((bot) => (
+                <BotCard key={bot.id} bot={bot} variant="compact" onPress={() => router.push(`/bots/${bot.id}` as any)} />
+              ))
+            )}
           </View>
         </View>
       ) : (
@@ -61,9 +66,13 @@ export default function DashboardScreen() {
             <PerformanceCard portfolio={portfolio} />
           )}
           <View style={{ gap: spacing.md }}>
-            {bots.map((bot) => (
-              <BotCard key={bot.id} bot={bot} variant="compact" onPress={() => router.push(`/bots/${bot.id}` as any)} />
-            ))}
+            {botsError ? (
+              <ErrorState title="No se pudieron cargar los bots." description={botsError} onRetry={refresh} />
+            ) : (
+              bots.map((bot) => (
+                <BotCard key={bot.id} bot={bot} variant="compact" onPress={() => router.push(`/bots/${bot.id}` as any)} />
+              ))
+            )}
           </View>
         </>
       )}
