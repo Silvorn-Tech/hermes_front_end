@@ -3,8 +3,8 @@ import { ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Text } from '../../../components/common/Text';
 import { EmptyState } from '../../../components/common/EmptyState';
+import { ErrorState } from '../../../components/common/ErrorState';
 import { SkeletonCard } from '../../../components/common/LoadingSkeleton';
-import { PreviewBanner } from '../../../components/common/PreviewBanner';
 import { Button } from '../../../components/common/Button';
 import { BotCard } from '../../../components/bots/BotCard';
 import { useHermesData } from '../../../hooks/HermesDataContext';
@@ -12,7 +12,7 @@ import { useResponsive } from '../../../hooks/useResponsive';
 import { colors, spacing } from '../../../constants';
 
 export default function BotsScreen() {
-  const { status, bots, setBotLifecycleStatus } = useHermesData();
+  const { status, bots, botsError, refreshBots } = useHermesData();
   const { isDesktop } = useResponsive();
   const router = useRouter();
 
@@ -36,20 +36,15 @@ export default function BotsScreen() {
         <Button label="Nuevo bot" onPress={() => router.push('/bots/form' as any)} />
       </View>
 
-      <PreviewBanner variant="preview" label="Vista previa — Bot API pendiente de backend" />
-
-      {bots.length === 0 ? (
-        <EmptyState title="Activa un bot para empezar a operar." />
+      {botsError ? (
+        <ErrorState title="No se pudieron cargar los bots." description={botsError} onRetry={refreshBots} />
+      ) : bots.length === 0 ? (
+        <EmptyState title="Creá un bot para empezar a operar." />
       ) : (
         <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: spacing.lg }}>
           {bots.map((bot) => (
             <View key={bot.id} style={{ flex: isDesktop ? 1 : undefined }}>
-              <BotCard
-                bot={bot}
-                variant="full"
-                onPress={() => router.push(`/bots/${bot.id}` as any)}
-                onToggleStatus={() => setBotLifecycleStatus(bot.id, bot.status === 'PAUSED' ? 'ACTIVE' : 'PAUSED')}
-              />
+              <BotCard bot={bot} variant="full" onPress={() => router.push(`/bots/${bot.id}` as any)} />
             </View>
           ))}
         </View>
