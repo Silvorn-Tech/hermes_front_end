@@ -1,18 +1,16 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { AuthStatus, AuthUser, HermesSession } from '../types/auth';
-import { authClient, NotImplementedOnBackend } from '../services/auth';
-import { sessionStorage } from '../services/secureStorage';
-import { useGoogleAuthRequest } from './useGoogleAuthRequest';
+import { authClient } from '../services/auth';
 
 interface AuthContextValue {
   status: AuthStatus;
   user: AuthUser | null;
   session: HermesSession | null;
-  /** True only while the persisted session is being read on boot — gates the whole app's first render. */
+  /** True only while the backend session is being checked on boot. */
   isLoading: boolean;
-  /** Google confirmed this identity (may still be pending/rejected by the Hermes backend). */
+  /** The app has a valid current-user result from the backend. */
   isAuthenticated: boolean;
-  /** Backend confirmed this identity may use Hermes. The only state that unlocks the app. */
+  /** Backend confirmed the identity may use Hermes. The only state that unlocks the app. */
   isAuthorized: boolean;
   /** User-facing copy for the current state, if any — never a raw technical error. */
   errorMessage: string | null;
@@ -29,102 +27,123 @@ const ERROR_COPY: Partial<Record<AuthStatus, string>> = {
   backend_error: 'No pudimos verificar tu acceso a Hermes. Intenta nuevamente.',
 };
 
+function readAuthStatusFromUrl(): 'success' | 'cancelled' | 'denied' | 'error' | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const authStatus = params.get('auth');
+  if (!authStatus) {
+    return null;
+  }
+
+  const cleanedUrl = new URL(window.location.href);
+  cleanedUrl.searchParams.delete('auth');
+  window.history.replaceState({}, '', cleanedUrl.toString());
+
+  if (authStatus === 'success') return 'success';
+  if (authStatus === 'cancelled') return 'cancelled';
+  if (authStatus === 'denied') return 'denied';
+  return 'error';
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('initializing');
   const [session, setSession] = useState<HermesSession | null>(null);
-  const { signIn: requestGoogleSignIn, isReady: isGoogleReady } = useGoogleAuthRequest();
 
-  // Bootstrap: resolve any persisted session before the app decides what to render.
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      const stored = await sessionStorage.read();
-      if (cancelled) return;
-
-      if (!stored) {
+  const syncWithBackend = useCallback(async () => {
+    try {
+      const user = await authClient.getCurrentUser();
+      if (!user) {
+        setSession(null);
         setStatus('signed_out');
         return;
       }
 
-      let parsed: HermesSession;
-      try {
-        parsed = JSON.parse(stored);
-      } catch {
-        await sessionStorage.clear();
+      setSession({ user });
+      setStatus('authorized');
+    } catch (error) {
+      console.warn('[auth] /auth/me failed:', error);
+      setSession(null);
+      setStatus('backend_error');
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const authStatusFromUrl = readAuthStatusFromUrl();
+
+      if (authStatusFromUrl === 'cancelled') {
         if (!cancelled) setStatus('signed_out');
         return;
       }
 
-      // Best-effort revalidation. Falls back to trusting the cached session
-      // if the backend doesn't implement GET /auth/session yet.
-      try {
-        const validation = await authClient.validateSession?.(parsed.accessToken);
-        if (validation && !validation.valid) {
-          await sessionStorage.clear();
-          if (!cancelled) setStatus('signed_out');
-          return;
-        }
-      } catch (err) {
-        if (!(err instanceof NotImplementedOnBackend)) {
-          console.warn('[auth] session validation failed, trusting cached session:', err);
-        }
+      if (authStatusFromUrl === 'denied') {
+        if (!cancelled) setStatus('unauthorized');
+        return;
       }
 
-      if (cancelled) return;
-      setSession(parsed);
-      setStatus('authorized');
+      if (authStatusFromUrl === 'error') {
+        if (!cancelled) setStatus('google_error');
+        return;
+      }
+
+      if (authStatusFromUrl === 'success') {
+        if (!cancelled) setStatus('authorizing');
+        await syncWithBackend();
+        return;
+      }
+
+      await syncWithBackend();
     })();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [syncWithBackend]);
 
   const signInWithGoogle = useCallback(async () => {
     setStatus('google_in_progress');
-    const outcome = await requestGoogleSignIn();
+
+    const outcome = await authClient.beginGoogleLogin();
+
+    if (outcome.type === 'pending') {
+      return;
+    }
 
     if (outcome.type === 'cancelled') {
       setStatus('signed_out');
       return;
     }
+
+    if (outcome.type === 'denied') {
+      setStatus('unauthorized');
+      return;
+    }
+
     if (outcome.type === 'error') {
-      console.warn('[auth] Google sign-in failed:', outcome.message);
+      console.warn('[auth] Google login failed:', outcome.message);
       setStatus('google_error');
       return;
     }
 
     setStatus('authorizing');
-    try {
-      const response = await authClient.authorizeWithGoogle({ idToken: outcome.result.idToken });
-
-      if (!response.authorized || !response.accessToken || !response.user) {
-        if (response.reason) console.warn('[auth] identity not authorized:', response.reason);
-        setStatus('unauthorized');
-        return;
-      }
-
-      const newSession: HermesSession = { accessToken: response.accessToken, user: response.user };
-      await sessionStorage.write(JSON.stringify(newSession));
-      setSession(newSession);
-      setStatus('authorized');
-    } catch (err) {
-      console.warn('[auth] backend authorization request failed:', err);
-      setStatus('backend_error');
-    }
-  }, [requestGoogleSignIn]);
+    await syncWithBackend();
+  }, [syncWithBackend]);
 
   const signOut = useCallback(async () => {
-    const token = session?.accessToken;
     setSession(null);
     setStatus('signed_out');
-    await sessionStorage.clear();
-    if (token) {
-      // Best-effort server-side revocation — local sign-out already happened above regardless of the outcome.
-      authClient.signOut?.(token).catch((err) => console.warn('[auth] backend sign-out failed:', err));
+
+    try {
+      await authClient.logout();
+    } catch (error) {
+      console.warn('[auth] backend logout failed:', error);
     }
-  }, [session]);
+  }, []);
 
   const value = useMemo<AuthContextValue>(() => {
     const isAuthenticated = status === 'authorizing' || status === 'authorized' || status === 'unauthorized';
@@ -136,11 +155,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated,
       isAuthorized: status === 'authorized',
       errorMessage: ERROR_COPY[status] ?? null,
-      isGoogleReady,
+      isGoogleReady: true,
       signInWithGoogle,
       signOut,
     };
-  }, [status, session, isGoogleReady, signInWithGoogle, signOut]);
+  }, [status, session, signInWithGoogle, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
