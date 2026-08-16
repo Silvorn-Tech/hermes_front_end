@@ -3,6 +3,7 @@ import { ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Text } from '../../components/common/Text';
 import { SkeletonCard, SkeletonList } from '../../components/common/LoadingSkeleton';
+import { ErrorState } from '../../components/common/ErrorState';
 import { SignalStrip } from '../../components/signals/SignalStrip';
 import { PerformanceCard } from '../../components/dashboard/PerformanceCard';
 import { PositionsSummary } from '../../components/dashboard/PositionsSummary';
@@ -14,7 +15,7 @@ import { pickTopSignal } from '../../utils/signalPriority';
 import { BotId } from '../../types';
 
 export default function DashboardScreen() {
-  const { status, portfolio, bots, positions, signals } = useHermesData();
+  const { status, portfolio, portfolioError, positions, positionsError, bots, signals, refresh } = useHermesData();
   const { isDesktop } = useResponsive();
   const router = useRouter();
 
@@ -40,7 +41,11 @@ export default function DashboardScreen() {
       {isDesktop ? (
         <View style={{ flexDirection: 'row', gap: bodyGap, alignItems: 'flex-start' }}>
           <View style={{ flex: 62 }}>
-            <PerformanceCard portfolio={portfolio} />
+            {portfolioError ? (
+              <ErrorState title="No se pudo cargar el portfolio." description={portfolioError} onRetry={refresh} />
+            ) : (
+              <PerformanceCard portfolio={portfolio} />
+            )}
           </View>
           <View style={{ flex: 38, gap: spacing.md }}>
             {bots.map((bot) => (
@@ -59,7 +64,11 @@ export default function DashboardScreen() {
         </>
       )}
 
-      <PositionsSummary positions={positions} getBotById={getBotById} />
+      {positionsError ? (
+        <ErrorState title="No se pudieron cargar las posiciones." description={positionsError} onRetry={refresh} />
+      ) : (
+        <PositionsSummary positions={positions} getBotById={getBotById} />
+      )}
     </ScrollView>
   );
 }
