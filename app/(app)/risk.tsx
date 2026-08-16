@@ -16,10 +16,8 @@ import { useHermesData } from '../../hooks/HermesDataContext';
 import { colors, bots as botColors, spacing } from '../../constants';
 import { formatPercent } from '../../utils/format';
 
-const botNames: Record<string, string> = { sentinel: 'Sentinel', equilibrium: 'Equilibrium', vortex: 'Vortex' };
-
 export default function RiskScreen() {
-  const { status, risk, bots, positions, signals, activityEvents } = useHermesData();
+  const { status, risk, realExposure, bots, positions, signals, activityEvents } = useHermesData();
   const router = useRouter();
 
   if (status === 'loading') {
@@ -40,6 +38,33 @@ export default function RiskScreen() {
       contentContainerStyle={{ padding: spacing.xl, gap: spacing.xxl, maxWidth: 900, width: '100%', alignSelf: 'center' }}
     >
       <Text variant="display">Risk</Text>
+
+      <Section title="Exposure (datos reales)">
+        <Card style={{ gap: spacing.lg }}>
+          {realExposure.totalPct === null ? (
+            <EmptyState
+              title="Exposición aún no disponible."
+              description="Se calcula a partir de posiciones y portfolio reales — vacío hasta tener balances valuables."
+            />
+          ) : (
+            <>
+              <ExposureBar pct={realExposure.totalPct} color={colors.brand} label="Exposure total" />
+              <View style={{ gap: spacing.md }}>
+                {realExposure.bySymbol.map((item) => (
+                  <ExposureBar key={item.symbol} pct={item.pct} color={colors.brand} label={item.symbol} />
+                ))}
+              </View>
+            </>
+          )}
+        </Card>
+      </Section>
+
+      <Card style={{ backgroundColor: colors.surfaceElevated }}>
+        <Text variant="caption" color="muted" style={{ textAlign: 'center' }}>
+          Vista previa — el resto de esta pantalla usa datos de ejemplo. El dominio de riesgo del backend (drawdown,
+          límites diarios, historial) todavía está pendiente.
+        </Text>
+      </Card>
 
       <Section title="Global risk state">
         <Card
@@ -70,7 +95,7 @@ export default function RiskScreen() {
         </Card>
       </Section>
 
-      <Section title="Exposure">
+      <Section title="Exposure por bot (ejemplo)">
         <Card style={{ gap: spacing.lg }}>
           <ExposureBar pct={risk.exposureTotalPct} color={colors.brand} label="Exposure total" />
           <View style={{ gap: spacing.md }}>
@@ -135,9 +160,13 @@ export default function RiskScreen() {
                 style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm }}
               >
                 <Text variant="body" color="secondary">
-                  {position.symbol} · {botNames[position.botId]}
+                  {position.symbol}
                 </Text>
-                <RiskStateBadge level={position.riskLevel} />
+                {position.riskLevel ? <RiskStateBadge level={position.riskLevel} /> : (
+                  <Text variant="caption" color="muted">
+                    Sin clasificar
+                  </Text>
+                )}
               </View>
             ))}
           </Card>

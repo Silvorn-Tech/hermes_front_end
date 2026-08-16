@@ -11,7 +11,9 @@ import { RiskStateBadge } from '../../../../components/risk/RiskState';
 import { SignalCard } from '../../../../components/signals/SignalCard';
 import { useHermesData } from '../../../../hooks/HermesDataContext';
 import { colors, spacing } from '../../../../constants';
-import { formatDuration, formatPercent, formatPrice, formatSignedCurrency } from '../../../../utils/format';
+import { formatDuration, formatOrDash, formatPercent, formatPrice, formatSignedCurrency } from '../../../../utils/format';
+import { generateIdempotencyKey } from '../../../../services/idempotency';
+import { getErrorMessage, getRejectionMessage } from '../../../../services/errorMessages';
 
 function Row({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
   return (
@@ -31,6 +33,11 @@ export default function PositionDetailScreen() {
   const router = useRouter();
   const { positions, bots, signals, activityEvents, closePosition } = useHermesData();
   const [confirmVisible, setConfirmVisible] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  // Held for the lifetime of this screen instance so a retry of the same
+  // close attempt reuses the same key — see services/idempotency.ts.
+  const [idempotencyKey] = useState(() => generateIdempotencyKey());
 
   const position = positions.find((p) => p.id === id);
 
@@ -44,12 +51,24 @@ export default function PositionDetailScreen() {
 
   const bot = bots.find((b) => b.id === position.botId);
   const relatedSignal = signals.find((s) => s.id === position.relatedSignalId);
-  const positive = position.unrealizedPnl >= 0;
+  const positive = (position.unrealizedPnl ?? 0) >= 0;
 
-  const handleConfirmClose = () => {
-    closePosition(position.id);
-    setConfirmVisible(false);
-    router.back();
+  const handleConfirmClose = async () => {
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      const result = await closePosition(position.symbol, idempotencyKey);
+      setConfirmVisible(false);
+      if (result.status === 'REJECTED' || result.status === 'FAILED') {
+        setSubmitError(getRejectionMessage(result.reason));
+      } else {
+        router.back();
+      }
+    } catch (error) {
+      setSubmitError(getErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -57,34 +76,40 @@ export default function PositionDetailScreen() {
       <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.xl }}>
         <View>
           <Text variant="caption" color="muted">
-            {position.direction === 'long' ? 'Long' : 'Short'} · {bot?.name ?? '—'}
+            {position.direction === 'long' ? 'Long' : 'Short'}
+            {bot ? ` · ${bot.name}` : ''}
           </Text>
           <Text variant="display" numeric style={{ color: positive ? colors.success : colors.danger }}>
-            {formatSignedCurrency(position.unrealizedPnl)}
+            {formatOrDash(position.unrealizedPnl, formatSignedCurrency)}
           </Text>
           <Text variant="body" numeric style={{ color: positive ? colors.success : colors.danger }}>
-            {formatPercent(position.unrealizedPnlPct, { signed: true })}
+            {formatOrDash(position.unrealizedPnlPct, (v) => formatPercent(v, { signed: true }))}
           </Text>
         </View>
 
         <Card>
-          <Row label="Entry price" value={formatPrice(position.entryPrice)} />
-          <Row label="Current price" value={formatPrice(position.currentPrice)} />
+          <Row label="Entry price" value={formatOrDash(position.entryPrice, formatPrice)} />
+          <Row label="Current price" value={formatOrDash(position.currentPrice, formatPrice)} />
+          <Row label="Value" value={formatOrDash(position.valueQuote, formatPrice)} />
           <Row label="Size" value={String(position.size)} />
-          <Row label="Duration" value={formatDuration(position.openedAt)} />
+          {position.openedAt ? <Row label="Duration" value={formatDuration(position.openedAt)} /> : null}
         </Card>
 
-        <Card>
-          <Row label="Stop loss" value={position.stopLoss ? formatPrice(position.stopLoss) : '—'} />
-          <Row label="Take profit" value={position.takeProfit ? formatPrice(position.takeProfit) : '—'} />
-        </Card>
+        {position.stopLoss || position.takeProfit ? (
+          <Card>
+            <Row label="Stop loss" value={formatOrDash(position.stopLoss, formatPrice)} />
+            <Row label="Take profit" value={formatOrDash(position.takeProfit, formatPrice)} />
+          </Card>
+        ) : null}
 
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text variant="body" color="muted">
-            Risk
-          </Text>
-          <RiskStateBadge level={position.riskLevel} />
-        </View>
+        {position.riskLevel ? (
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text variant="body" color="muted">
+              Risk
+            </Text>
+            <RiskStateBadge level={position.riskLevel} />
+          </View>
+        ) : null}
 
         {relatedSignal ? (
           <View style={{ gap: spacing.sm }}>
@@ -98,16 +123,30 @@ export default function PositionDetailScreen() {
           </View>
         ) : null}
 
-        <Button label="Cerrar posición" variant="danger" onPress={() => setConfirmVisible(true)} fullWidth />
+        {submitError ? (
+          <Text variant="body" style={{ color: colors.danger }}>
+            {submitError}
+          </Text>
+        ) : null}
+
+        <Button
+          label="Cerrar posición"
+          variant="danger"
+          disabled={isSubmitting}
+          onPress={() => setConfirmVisible(true)}
+          fullWidth
+        />
       </ScrollView>
 
       <ConfirmDialog
         visible={confirmVisible}
         title="Cerrar posición"
         description={`Vas a cerrar ${position.symbol}. Esta acción no se puede deshacer.`}
-        confirmLabel="Cerrar posición"
+        confirmLabel={isSubmitting ? 'Cerrando…' : 'Cerrar posición'}
         destructive
-        onConfirm={handleConfirmClose}
+        onConfirm={() => {
+          if (!isSubmitting) void handleConfirmClose();
+        }}
         onCancel={() => setConfirmVisible(false)}
       />
     </DetailDrawer>

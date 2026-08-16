@@ -8,6 +8,7 @@ export default function TradingLayout() {
       <Stack.Screen name="index" />
       <Stack.Screen name="position/[id]" options={{ presentation: 'transparentModal', animation: 'none' }} />
       <Stack.Screen name="order/[id]" options={{ presentation: 'transparentModal', animation: 'none' }} />
+      <Stack.Screen name="new-order" options={{ presentation: 'transparentModal', animation: 'none' }} />
     </Stack>
   );
 }

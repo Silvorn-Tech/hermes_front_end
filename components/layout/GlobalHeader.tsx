@@ -10,7 +10,9 @@ import { formatCurrency, formatPercent, formatSignedCurrency } from '../../utils
 export function GlobalHeader() {
   const { portfolio, risk } = useHermesData();
   const { isDesktop } = useResponsive();
-  const positive = portfolio.dailyPnl >= 0;
+  const dailyPnl = portfolio?.dailyPnl ?? null;
+  const dailyPnlPct = portfolio?.dailyPnlPct ?? null;
+  const positive = (dailyPnl ?? 0) >= 0;
 
   return (
     <View
@@ -31,7 +33,7 @@ export function GlobalHeader() {
             Balance
           </Text>
           <Text variant={isDesktop ? 'cardTitle' : 'body'} numeric>
-            {formatCurrency(portfolio.balance)}
+            {portfolio ? formatCurrency(portfolio.totalValueQuote) : '—'}
           </Text>
         </View>
         {isDesktop ? (
@@ -39,9 +41,15 @@ export function GlobalHeader() {
             <Text variant="caption" color="muted">
               Daily P&amp;L
             </Text>
-            <Text variant="cardTitle" numeric style={{ color: positive ? colors.success : colors.danger }}>
-              {formatSignedCurrency(portfolio.dailyPnl)} ({formatPercent(portfolio.dailyPnlPct, { signed: true })})
-            </Text>
+            {dailyPnl !== null && dailyPnlPct !== null ? (
+              <Text variant="cardTitle" numeric style={{ color: positive ? colors.success : colors.danger }}>
+                {formatSignedCurrency(dailyPnl)} ({formatPercent(dailyPnlPct, { signed: true })})
+              </Text>
+            ) : (
+              <Text variant="cardTitle" color="muted">
+                No disponible aún
+              </Text>
+            )}
           </View>
         ) : null}
       </View>

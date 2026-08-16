@@ -4,28 +4,9 @@ import { Text } from '../common/Text';
 import { Card } from '../common/Card';
 import { Badge } from '../common/Badge';
 import { colors, spacing, bots as botColors } from '../../constants';
-import { Bot, Order, OrderStatus } from '../../types';
-import { formatClock, formatPrice } from '../../utils/format';
-
-const statusLabel: Record<OrderStatus, string> = {
-  filled: 'Ejecutada',
-  pending: 'Pendiente',
-  cancelled: 'Cancelada',
-  rejected: 'Rechazada',
-};
-
-const statusTone: Record<OrderStatus, string> = {
-  filled: colors.success,
-  pending: colors.aiAccent,
-  cancelled: colors.textMuted,
-  rejected: colors.danger,
-};
-
-const typeLabel: Record<Order['type'], string> = {
-  market: 'Market',
-  limit: 'Limit',
-  stop: 'Stop',
-};
+import { Bot, Order } from '../../types';
+import { formatClock, formatOrDash, formatPrice } from '../../utils/format';
+import { orderStatusLabel, orderStatusTone, orderTypeLabel } from '../../utils/orderDisplay';
 
 interface Props {
   order: Order;
@@ -52,10 +33,10 @@ export function OrderRow({ order, bot, onPress }: Props) {
           {order.symbol}
         </Text>
         <Text variant="body" color="secondary" style={{ flex: col.type }}>
-          {typeLabel[order.type]}
+          {orderTypeLabel[order.type]}
         </Text>
         <View style={{ flex: col.status }}>
-          <Badge label={statusLabel[order.status]} tone={statusTone[order.status]} />
+          <Badge label={orderStatusLabel[order.status]} tone={orderStatusTone[order.status]} />
         </View>
         <View style={{ flex: col.bot, flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
           <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: bot ? botColors[bot.id] : colors.textMuted }} />
@@ -67,7 +48,7 @@ export function OrderRow({ order, bot, onPress }: Props) {
           {order.size}
         </Text>
         <Text variant="body" numeric style={{ flex: col.price }}>
-          {formatPrice(order.price)}
+          {order.type === 'MARKET' ? 'Market' : formatOrDash(order.price, formatPrice)}
         </Text>
         <Text variant="caption" color="muted" numeric style={{ flex: col.time }}>
           {formatClock(order.timestamp)}
@@ -119,18 +100,18 @@ export function OrderCard({ order, bot, onPress }: Props) {
       <Card style={{ gap: spacing.sm }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text variant="cardTitle">{order.symbol}</Text>
-          <Badge label={statusLabel[order.status]} tone={statusTone[order.status]} />
+          <Badge label={orderStatusLabel[order.status]} tone={orderStatusTone[order.status]} />
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text variant="caption" color="secondary">
-            {typeLabel[order.type]} · {bot?.name ?? '—'}
+            {orderTypeLabel[order.type]} · {bot?.name ?? '—'}
           </Text>
           <Text variant="caption" color="muted">
             {formatClock(order.timestamp)}
           </Text>
         </View>
         <Text variant="body" numeric>
-          {order.size} @ {formatPrice(order.price)}
+          {order.size} @ {order.type === 'MARKET' ? 'Market' : formatOrDash(order.price, formatPrice)}
         </Text>
       </Card>
     </Pressable>

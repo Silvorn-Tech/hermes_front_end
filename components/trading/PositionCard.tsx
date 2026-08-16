@@ -4,7 +4,7 @@ import { Text } from '../common/Text';
 import { Card } from '../common/Card';
 import { colors, spacing, bots as botColors } from '../../constants';
 import { Bot, Position } from '../../types';
-import { formatDuration, formatPercent, formatPrice, formatSignedCurrency } from '../../utils/format';
+import { formatDuration, formatOrDash, formatPercent, formatPrice, formatSignedCurrency } from '../../utils/format';
 
 interface Props {
   position: Position;
@@ -13,7 +13,7 @@ interface Props {
 }
 
 export function PositionCard({ position, bot, onPress }: Props) {
-  const positive = position.unrealizedPnl >= 0;
+  const positive = (position.unrealizedPnl ?? 0) >= 0;
 
   return (
     <Pressable onPress={onPress}>
@@ -29,7 +29,7 @@ export function PositionCard({ position, bot, onPress }: Props) {
             </Text>
           </View>
           <Text variant="cardTitle" numeric style={{ color: positive ? colors.success : colors.danger }}>
-            {formatSignedCurrency(position.unrealizedPnl)}
+            {formatOrDash(position.unrealizedPnl, formatSignedCurrency)}
           </Text>
         </View>
 
@@ -41,16 +41,16 @@ export function PositionCard({ position, bot, onPress }: Props) {
             </Text>
           </View>
           <Text variant="caption" numeric style={{ color: positive ? colors.success : colors.danger }}>
-            {formatPercent(position.unrealizedPnlPct, { signed: true })}
+            {formatOrDash(position.unrealizedPnlPct, (v) => formatPercent(v, { signed: true }))}
           </Text>
         </View>
 
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border }}>
           <Text variant="caption" color="muted">
-            Entry {formatPrice(position.entryPrice)} → {formatPrice(position.currentPrice)}
+            Entry {formatOrDash(position.entryPrice, formatPrice)} → {formatOrDash(position.currentPrice, formatPrice)}
           </Text>
           <Text variant="caption" color="muted">
-            {formatDuration(position.openedAt)}
+            {formatOrDash(position.openedAt, (iso) => formatDuration(iso))}
           </Text>
         </View>
       </Card>

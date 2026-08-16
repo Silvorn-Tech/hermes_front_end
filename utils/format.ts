@@ -48,6 +48,13 @@ export function formatClock(iso: string): string {
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
+/** `value` is null/undefined when Hermes deliberately didn't fabricate a
+ * number (e.g. an unpriced asset, or a field a real position/order simply
+ * doesn't have) — render the dash rather than throw or show "0". */
+export function formatOrDash<T>(value: T | null | undefined, formatter: (v: T) => string): string {
+  return value === null || value === undefined ? '—' : formatter(value);
+}
+
 export function formatDuration(startIso: string, now: Date = new Date()): string {
   const diffMs = now.getTime() - new Date(startIso).getTime();
   const totalMin = Math.max(0, Math.round(diffMs / 60000));
