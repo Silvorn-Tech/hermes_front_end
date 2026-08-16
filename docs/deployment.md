@@ -102,8 +102,12 @@ at the real backend. What matters for this deployment:
   HERMES_ALLOWED_RETURN_URIS=https://romeo-dev-zone.tailed9c54.ts.net:8443/login
   ```
 
-  then `docker compose -f /opt/hermes-v2/compose.yaml restart hermes-v2` to
-  pick it up (env vars are baked in at container start).
+  then `docker compose -f /opt/hermes-v2/compose.yaml up -d hermes-v2` to
+  pick it up — `restart` does *not* reload `env_file` values (it reuses the
+  existing container's already-baked-in environment); `up -d` recomputes
+  the config hash, which includes the resolved `.env`, and recreates the
+  container when it differs. This is the same command `deploy.sh` itself
+  always uses, never `restart`.
 - `GOOGLE_REDIRECT_URI` already correctly points at the backend's own
   callback and needs no change — the frontend URL is never registered with
   Google, only with the backend's own open-redirect allowlist above.
