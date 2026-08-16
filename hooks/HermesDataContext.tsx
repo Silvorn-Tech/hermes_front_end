@@ -3,6 +3,7 @@ import {
   ActivityEvent,
   Bot,
   BotId,
+  BotLifecycleStatus,
   Order,
   Portfolio,
   Position,
@@ -40,7 +41,7 @@ interface HermesDataValue {
   activityEvents: ActivityEvent[];
   risk: RiskSnapshot;
   realExposure: RealExposure;
-  toggleBotStatus: (botId: BotId) => void;
+  setBotLifecycleStatus: (botId: BotId, status: BotLifecycleStatus) => void;
   refresh: () => Promise<void>;
   refreshOrders: () => Promise<void>;
   refreshPositions: () => Promise<void>;
@@ -144,37 +145,53 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthorized]);
 
-  const toggleBotStatus = (botId: BotId) => {
-    setBots((prev) =>
-      prev.map((b) => (b.id === botId ? { ...b, status: b.status === 'paused' ? 'active' : 'paused' } : b))
-    );
+  // No Bot API exists on the backend yet — this is a local-only preview
+  // mutation (see components/common/PreviewBanner.tsx usage on the Bots
+  // screens), never persisted, reset to mock defaults on reload.
+  const setBotLifecycleStatus = (botId: BotId, status: BotLifecycleStatus) => {
+    setBots((prev) => prev.map((b) => (b.id === botId ? { ...b, status } : b)));
   };
 
   const closePosition = useCallback(
     async (symbol: string, idempotencyKey: string) => {
-      const result = await apiClient.closePosition(symbol, idempotencyKey);
-      await Promise.allSettled([refreshPositions(), refreshOrders()]);
-      return result;
+      try {
+        const result = await apiClient.closePosition(symbol, idempotencyKey);
+        await Promise.allSettled([refreshPositions(), refreshOrders()]);
+        return result;
+      } catch (error) {
+        handlePotential401(error);
+        throw error;
+      }
     },
-    [refreshPositions, refreshOrders]
+    [refreshPositions, refreshOrders, handlePotential401]
   );
 
   const cancelOrder = useCallback(
     async (orderId: string, idempotencyKey: string) => {
-      const result = await apiClient.cancelOrder(orderId, idempotencyKey);
-      await refreshOrders();
-      return result;
+      try {
+        const result = await apiClient.cancelOrder(orderId, idempotencyKey);
+        await refreshOrders();
+        return result;
+      } catch (error) {
+        handlePotential401(error);
+        throw error;
+      }
     },
-    [refreshOrders]
+    [refreshOrders, handlePotential401]
   );
 
   const createOrder = useCallback(
     async (body: CreateOrderRequest, idempotencyKey: string) => {
-      const result = await apiClient.createOrder(body, idempotencyKey);
-      await Promise.allSettled([refreshOrders(), refreshPositions()]);
-      return result;
+      try {
+        const result = await apiClient.createOrder(body, idempotencyKey);
+        await Promise.allSettled([refreshOrders(), refreshPositions()]);
+        return result;
+      } catch (error) {
+        handlePotential401(error);
+        throw error;
+      }
     },
-    [refreshOrders, refreshPositions]
+    [refreshOrders, refreshPositions, handlePotential401]
   );
 
   const realExposure = useMemo<RealExposure>(() => {
@@ -209,7 +226,7 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
       activityEvents: mock.activityEvents,
       risk: mock.riskSnapshot,
       realExposure,
-      toggleBotStatus,
+      setBotLifecycleStatus,
       refresh,
       refreshOrders,
       refreshPositions,

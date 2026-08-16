@@ -5,6 +5,7 @@ import { Tabs } from '../../../components/common/Tabs';
 import { FilterBar, FilterSheetButton, FilterGroup } from '../../../components/common/Filters';
 import { EmptyState } from '../../../components/common/EmptyState';
 import { SkeletonCard } from '../../../components/common/LoadingSkeleton';
+import { PreviewBanner } from '../../../components/common/PreviewBanner';
 import { SignalCard } from '../../../components/signals/SignalCard';
 import { useHermesData } from '../../../hooks/HermesDataContext';
 import { useResponsive } from '../../../hooks/useResponsive';
@@ -14,6 +15,19 @@ import { formatRelativeTime } from '../../../utils/format';
 const mainTabs = [
   { key: 'signals', label: 'Signals' },
   { key: 'activity', label: 'Activity' },
+];
+
+const activityFilterGroups: FilterGroup[] = [
+  {
+    key: 'category',
+    label: 'Category',
+    options: [
+      { value: 'trade', label: 'Trade' },
+      { value: 'risk', label: 'Risk' },
+      { value: 'rebalance', label: 'Rebalance' },
+      { value: 'system', label: 'System' },
+    ],
+  },
 ];
 
 const filterGroups: FilterGroup[] = [
@@ -53,8 +67,10 @@ export default function SignalsScreen() {
   const { isDesktop } = useResponsive();
   const [tab, setTab] = useState<'signals' | 'activity'>('signals');
   const [selected, setSelected] = useState<Record<string, string | null>>({ source: null, level: null, bot: null });
+  const [activitySelected, setActivitySelected] = useState<Record<string, string | null>>({ category: null });
 
   const hasActiveFilters = Object.values(selected).some(Boolean);
+  const hasActiveActivityFilters = Object.values(activitySelected).some(Boolean);
 
   const filteredSignals = useMemo(() => {
     return signals.filter((s) => {
@@ -67,7 +83,15 @@ export default function SignalsScreen() {
     });
   }, [signals, selected]);
 
+  const filteredActivity = useMemo(() => {
+    return activityEvents.filter((e) => !activitySelected.category || e.category === activitySelected.category);
+  }, [activityEvents, activitySelected]);
+
+  const relatedSignalFor = (eventId: string) => signals.find((s) => s.relatedEventIds.includes(eventId));
+
   const onSelect = (groupKey: string, value: string | null) => setSelected((prev) => ({ ...prev, [groupKey]: value }));
+  const onSelectActivity = (groupKey: string, value: string | null) =>
+    setActivitySelected((prev) => ({ ...prev, [groupKey]: value }));
 
   if (status === 'loading') {
     return (
@@ -84,6 +108,8 @@ export default function SignalsScreen() {
         <Text variant="display">Signals</Text>
         <Tabs items={mainTabs} activeKey={tab} onChange={(k) => setTab(k as typeof tab)} />
       </View>
+
+      <PreviewBanner variant="preview" label="Vista previa — Signals/Activity API pendiente de backend" />
 
       {tab === 'signals' ? (
         <>
@@ -109,31 +135,53 @@ export default function SignalsScreen() {
             </View>
           )}
         </>
-      ) : activityEvents.length === 0 ? (
-        <EmptyState title="Sin actividad reciente." />
       ) : (
-        <View style={{ gap: 0, borderTopWidth: 1, borderTopColor: colors.border }}>
-          {activityEvents.map((event) => (
-            <View
-              key={event.id}
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                gap: spacing.md,
-                paddingVertical: spacing.md,
-                borderBottomWidth: 1,
-                borderBottomColor: colors.border,
-              }}
-            >
-              <Text variant="body" color="secondary" style={{ flex: 1 }}>
-                {event.description}
-              </Text>
-              <Text variant="caption" color="muted">
-                {formatRelativeTime(event.timestamp)}
-              </Text>
+        <>
+          {isDesktop ? (
+            <FilterBar groups={activityFilterGroups} selected={activitySelected} onSelect={onSelectActivity} />
+          ) : (
+            <FilterSheetButton groups={activityFilterGroups} selected={activitySelected} onSelect={onSelectActivity} />
+          )}
+
+          {filteredActivity.length === 0 ? (
+            <EmptyState
+              title={hasActiveActivityFilters ? 'Sin resultados para este filtro.' : 'Sin actividad reciente.'}
+            />
+          ) : (
+            <View style={{ gap: 0, borderTopWidth: 1, borderTopColor: colors.border }}>
+              {filteredActivity.map((event) => {
+                const relatedSignal = relatedSignalFor(event.id);
+                return (
+                  <View
+                    key={event.id}
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      gap: spacing.md,
+                      paddingVertical: spacing.md,
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.border,
+                    }}
+                  >
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text variant="body" color="secondary">
+                        {event.description}
+                      </Text>
+                      {relatedSignal ? (
+                        <Text variant="caption" color="muted">
+                          Signal relacionado: {relatedSignal.headline}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text variant="caption" color="muted">
+                      {formatRelativeTime(event.timestamp)}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
-          ))}
-        </View>
+          )}
+        </>
       )}
     </ScrollView>
   );

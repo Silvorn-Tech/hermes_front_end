@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { DetailDrawer } from '../../../components/common/DetailDrawer';
@@ -9,7 +9,11 @@ import { useHermesData } from '../../../hooks/HermesDataContext';
 import { colors, radius, spacing } from '../../../constants';
 import { generateIdempotencyKey } from '../../../services/idempotency';
 import { getErrorMessage, getRejectionMessage } from '../../../services/errorMessages';
+import { apiClient, MarketData } from '../../../services/api';
+import { formatPercent, formatPrice } from '../../../utils/format';
 import { OrderSide, OrderType } from '../../../types';
+
+const MARKET_DATA_DEBOUNCE_MS = 500;
 
 const sideTabs = [
   { key: 'BUY', label: 'Compra' },
@@ -58,8 +62,40 @@ export default function NewOrderScreen() {
   // services/idempotency.ts for the reuse-vs-regenerate contract.
   const [idempotencyKey, setIdempotencyKey] = useState(() => generateIdempotencyKey());
 
+  const [marketData, setMarketData] = useState<MarketData | null>(null);
+  const [marketDataLoading, setMarketDataLoading] = useState(false);
+  const [marketDataError, setMarketDataError] = useState<string | null>(null);
+
   const trimmedSymbol = symbol.trim().toUpperCase();
   const symbolValid = trimmedSymbol.length > 0;
+
+  // Debounced lookup — never fires on every keystroke, just once the user
+  // pauses typing a symbol. Purely informational (a reference price for
+  // picking a LIMIT price); the backend is still the only source of truth
+  // for what an order actually executes at.
+  useEffect(() => {
+    setMarketData(null);
+    setMarketDataError(null);
+    if (!symbolValid) return;
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setMarketDataLoading(true);
+      try {
+        const data = await apiClient.getMarketData(trimmedSymbol);
+        if (!cancelled) setMarketData(data);
+      } catch (error) {
+        if (!cancelled) setMarketDataError(getErrorMessage(error));
+      } finally {
+        if (!cancelled) setMarketDataLoading(false);
+      }
+    }, MARKET_DATA_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [trimmedSymbol, symbolValid]);
   const quantityValid = DECIMAL_PATTERN.test(quantity.trim()) && Number(quantity.trim()) > 0;
   const priceValid = type === 'MARKET' || (DECIMAL_PATTERN.test(price.trim()) && Number(price.trim()) > 0);
   const formValid = symbolValid && quantityValid && priceValid;
@@ -120,6 +156,19 @@ export default function NewOrderScreen() {
             autoCorrect={false}
             style={fieldStyle(touched && !symbolValid)}
           />
+          {marketDataLoading ? (
+            <Text variant="caption" color="muted">
+              Buscando precio…
+            </Text>
+          ) : marketDataError ? (
+            <Text variant="caption" color="muted">
+              No se pudo obtener el precio de mercado.
+            </Text>
+          ) : marketData ? (
+            <Text variant="caption" color="muted">
+              Último precio: {formatPrice(marketData.lastPrice)} ({formatPercent(marketData.priceChangePercent, { signed: true })} 24h)
+            </Text>
+          ) : null}
         </View>
 
         <View style={{ gap: spacing.sm }}>

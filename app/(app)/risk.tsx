@@ -7,6 +7,7 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { EmptyState } from '../../components/common/EmptyState';
 import { SkeletonCard } from '../../components/common/LoadingSkeleton';
+import { PreviewBanner } from '../../components/common/PreviewBanner';
 import { ExposureBar } from '../../components/bots/ExposureBar';
 import { RiskStateBadge, RiskStateRow } from '../../components/risk/RiskState';
 import { RiskLimitRow } from '../../components/risk/RiskLimitRow';
@@ -59,12 +60,11 @@ export default function RiskScreen() {
         </Card>
       </Section>
 
-      <Card style={{ backgroundColor: colors.surfaceElevated }}>
-        <Text variant="caption" color="muted" style={{ textAlign: 'center' }}>
-          Vista previa — el resto de esta pantalla usa datos de ejemplo. El dominio de riesgo del backend (drawdown,
-          límites diarios, historial) todavía está pendiente.
-        </Text>
-      </Card>
+      <PreviewBanner
+        variant="preview"
+        label="Vista previa — datos de ejemplo"
+        description="El resto de esta pantalla (drawdown, límites diarios, historial, circuit breaker) usa datos de ejemplo. El dominio de riesgo del backend todavía está pendiente."
+      />
 
       <Section title="Global risk state">
         <Card
@@ -92,6 +92,29 @@ export default function RiskScreen() {
               style={{ marginTop: spacing.sm }}
             />
           ) : null}
+        </Card>
+      </Section>
+
+      <Section title="Circuit breaker">
+        <Card style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View style={{ flex: 1, marginRight: spacing.md }}>
+            <Text variant="body" color="secondary">
+              {risk.circuitBreaker.active ? 'Activo' : 'Inactivo'}
+            </Text>
+            {risk.circuitBreaker.reason ? (
+              <Text variant="caption" color="muted">
+                {risk.circuitBreaker.reason}
+              </Text>
+            ) : null}
+          </View>
+          <View
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: 5,
+              backgroundColor: risk.circuitBreaker.active ? colors.danger : colors.success,
+            }}
+          />
         </Card>
       </Section>
 
