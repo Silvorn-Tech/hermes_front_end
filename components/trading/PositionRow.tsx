@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 import { Text } from '../common/Text';
 import { colors, spacing, bots as botColors } from '../../constants';
 import { Bot, Position } from '../../types';
-import { formatCurrency, formatDuration, formatPrice, formatSignedCurrency } from '../../utils/format';
+import { formatDuration, formatOrDash, formatPrice, formatSignedCurrency } from '../../utils/format';
 
 interface Props {
   position: Position;
@@ -15,7 +15,7 @@ interface Props {
 const col = { symbol: 1.1, direction: 0.8, bot: 1.1, size: 0.9, price: 1, pnl: 1.2, duration: 0.8 };
 
 export function PositionRow({ position, bot, density, onPress }: Props) {
-  const positive = position.unrealizedPnl >= 0;
+  const positive = (position.unrealizedPnl ?? 0) >= 0;
   const vPad = density === 'compact' ? spacing.xs + 2 : spacing.md;
 
   return (
@@ -49,18 +49,18 @@ export function PositionRow({ position, bot, density, onPress }: Props) {
           {position.size}
         </Text>
         <Text variant="body" color="secondary" numeric style={{ flex: col.price }}>
-          {formatPrice(position.entryPrice)}
+          {formatOrDash(position.entryPrice, formatPrice)}
         </Text>
         <Text variant="body" numeric style={{ flex: col.price }}>
-          {formatPrice(position.currentPrice)}
+          {formatOrDash(position.currentPrice, formatPrice)}
         </Text>
         <View style={{ flex: col.pnl }}>
           <Text variant="body" numeric style={{ color: positive ? colors.success : colors.danger }}>
-            {formatSignedCurrency(position.unrealizedPnl)}
+            {formatOrDash(position.unrealizedPnl, formatSignedCurrency)}
           </Text>
         </View>
         <Text variant="caption" color="muted" numeric style={{ flex: col.duration }}>
-          {formatDuration(position.openedAt)}
+          {formatOrDash(position.openedAt, (iso) => formatDuration(iso))}
         </Text>
       </View>
     </Pressable>
