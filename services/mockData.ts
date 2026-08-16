@@ -1,60 +1,18 @@
-import {
-  ActivityEvent,
-  Bot,
-  BotId,
-  EquityCurve,
-  EquityPeriod,
-  Order,
-  Portfolio,
-  Position,
-  RiskSnapshot,
-  Signal,
-} from '../types';
-import { createSeededRandom } from '../utils/random';
+import { ActivityEvent, Bot, BotId, RiskSnapshot, Signal } from '../types';
 
 /**
- * Single source of truth for all mock data in Hermes v1.
- * Dashboard, Bots, Trading, Risk and Signals all read from this module —
- * screens must never define their own inline mock values.
+ * Single source of truth for the mock data still in use. Portfolio,
+ * positions, and orders used to live here too, but hooks/HermesDataContext.tsx
+ * now fetches those from the real Hermes v2 backend (see services/api.ts) —
+ * their mock versions were removed rather than kept around unused, since
+ * nothing reads them anymore and their old shape no longer matches the real
+ * Portfolio/Position/Order types. Bots, Signals, and Activity stay mocked
+ * here because no backend domain exists for them yet.
  */
 
 const NOW = new Date();
 const minutesAgo = (n: number) => new Date(NOW.getTime() - n * 60_000).toISOString();
 const hoursAgo = (n: number) => minutesAgo(n * 60);
-const daysAgo = (n: number) => hoursAgo(n * 24);
-
-// ---------------------------------------------------------------------------
-// Portfolio
-// ---------------------------------------------------------------------------
-
-function generateEquityCurve(period: EquityPeriod, numPoints: number, returnPct: number, seed: number): EquityCurve {
-  const rand = createSeededRandom(seed);
-  const start = 100;
-  const end = start * (1 + returnPct / 100);
-  const points: EquityCurve['points'] = [];
-  for (let i = 0; i < numPoints; i++) {
-    const progress = i / (numPoints - 1);
-    const trend = start + (end - start) * progress;
-    const noise = (rand() - 0.5) * Math.abs(returnPct) * 0.35;
-    const damp = Math.sin(progress * Math.PI); // less noise at the endpoints
-    points.push({ t: `p${i}`, v: Number((trend + noise * damp).toFixed(2)) });
-  }
-  points[points.length - 1].v = Number(end.toFixed(2));
-  const winRatePct = 54 + Math.round(rand() * 10);
-  return { period, points, returnPct, winRatePct };
-}
-
-export const portfolio: Portfolio = {
-  balance: 128450.32,
-  dailyPnl: 3082,
-  dailyPnlPct: 2.4,
-  equityCurves: {
-    '7D': generateEquityCurve('7D', 24, 3.8, 1),
-    '1M': generateEquityCurve('1M', 30, 8.4, 2),
-    '3M': generateEquityCurve('3M', 36, 14.2, 3),
-    '1Y': generateEquityCurve('1Y', 48, 26.5, 4),
-  },
-};
 
 // ---------------------------------------------------------------------------
 // Bots
@@ -101,98 +59,6 @@ export const bots: Bot[] = [
 
 export function getBot(id: BotId): Bot | undefined {
   return bots.find((b) => b.id === id);
-}
-
-// ---------------------------------------------------------------------------
-// Positions
-// ---------------------------------------------------------------------------
-
-export const positions: Position[] = [
-  {
-    id: 'pos-1',
-    symbol: 'BTCUSDT',
-    direction: 'long',
-    botId: 'vortex',
-    size: 0.42,
-    entryPrice: 61250.3,
-    currentPrice: 62480.1,
-    unrealizedPnl: 516.52,
-    unrealizedPnlPct: 2.01,
-    openedAt: hoursAgo(6),
-    stopLoss: 59800,
-    takeProfit: 65500,
-    relatedSignalId: 'sig-vortex-behavior',
-    riskLevel: 'normal',
-  },
-  {
-    id: 'pos-2',
-    symbol: 'ETHUSDT',
-    direction: 'long',
-    botId: 'equilibrium',
-    size: 3.8,
-    entryPrice: 2510.4,
-    currentPrice: 2589.75,
-    unrealizedPnl: 301.53,
-    unrealizedPnlPct: 3.16,
-    openedAt: hoursAgo(9),
-    stopLoss: 2400,
-    takeProfit: 2750,
-    relatedSignalId: 'sig-equilibrium-rebalance',
-    riskLevel: 'normal',
-  },
-  {
-    id: 'pos-3',
-    symbol: 'SOLUSDT',
-    direction: 'short',
-    botId: 'vortex',
-    size: 120,
-    entryPrice: 148.2,
-    currentPrice: 142.1,
-    unrealizedPnl: 732.0,
-    unrealizedPnlPct: 4.12,
-    openedAt: minutesAgo(45),
-    stopLoss: 152.5,
-    takeProfit: 132.0,
-    relatedSignalId: 'sig-vortex-reduced-exposure',
-    riskLevel: 'elevated',
-  },
-  {
-    id: 'pos-4',
-    symbol: 'AVAXUSDT',
-    direction: 'long',
-    botId: 'sentinel',
-    size: 210,
-    entryPrice: 28.4,
-    currentPrice: 28.95,
-    unrealizedPnl: 115.5,
-    unrealizedPnlPct: 1.94,
-    openedAt: daysAgo(1),
-    stopLoss: 27.1,
-    takeProfit: 31.5,
-    riskLevel: 'normal',
-  },
-];
-
-export function getPosition(id: string): Position | undefined {
-  return positions.find((p) => p.id === id);
-}
-
-// ---------------------------------------------------------------------------
-// Orders
-// ---------------------------------------------------------------------------
-
-export const orders: Order[] = [
-  { id: 'ord-1', symbol: 'BTCUSDT', type: 'market', status: 'filled', botId: 'vortex', size: 0.42, price: 61250.3, timestamp: hoursAgo(6) },
-  { id: 'ord-2', symbol: 'ETHUSDT', type: 'limit', status: 'filled', botId: 'equilibrium', size: 3.8, price: 2510.4, timestamp: hoursAgo(9) },
-  { id: 'ord-3', symbol: 'SOLUSDT', type: 'market', status: 'filled', botId: 'vortex', size: 120, price: 148.2, timestamp: minutesAgo(45) },
-  { id: 'ord-4', symbol: 'AVAXUSDT', type: 'limit', status: 'filled', botId: 'sentinel', size: 210, price: 28.4, timestamp: daysAgo(1) },
-  { id: 'ord-5', symbol: 'BTCUSDT', type: 'stop', status: 'pending', botId: 'vortex', size: 0.42, price: 59800, timestamp: hoursAgo(6) },
-  { id: 'ord-6', symbol: 'ETHUSDT', type: 'limit', status: 'cancelled', botId: 'equilibrium', size: 2.1, price: 2470.0, timestamp: hoursAgo(12) },
-  { id: 'ord-7', symbol: 'SOLUSDT', type: 'limit', status: 'pending', botId: 'vortex', size: 60, price: 138.5, timestamp: minutesAgo(30) },
-];
-
-export function getOrder(id: string): Order | undefined {
-  return orders.find((o) => o.id === id);
 }
 
 // ---------------------------------------------------------------------------
