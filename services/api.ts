@@ -6,6 +6,10 @@
  * integration has an obvious landing spot: swap the hook implementations to
  * call these functions (wired to fetch/axios + auth) instead of the mock
  * getters, without having to touch any screen or component.
+ *
+ * Authentication/authorization has its own contract — see services/auth.ts
+ * and docs/authentication.md. Once real data calls are wired up, they should
+ * attach the session's accessToken (from useAuth()) as a Bearer token here.
  */
 
 import {
