@@ -9,7 +9,7 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { colors, radius, spacing } from '../../constants';
 import { useAuth } from '../../hooks/AuthContext';
-import { SimulationConfig, UserRiskLimits } from '../../types';
+import { SimulationConfig, SimulationRiskLimits, UserRiskLimits } from '../../types';
 import { apiClient } from '../../services/api';
 import { generateIdempotencyKey } from '../../services/idempotency';
 import { getErrorMessage } from '../../services/errorMessages';
@@ -552,6 +552,214 @@ function RiskLimitsSection() {
   );
 }
 
+/** Self-fetching. Unlike RiskLimitsSection, every field always holds a
+ * real value — a brand-new user already gets sensible defaults from the
+ * backend (see hermes_v2's user_risk_settings_service.py), so there is
+ * no "empty means not configured" state here. Applies to Simulation
+ * bots only; real orders are unaffected (see RiskLimitsSection above). */
+function SimulationRiskLimitsSection() {
+  const [status, setStatus] = useState<'loading' | 'loaded' | 'failed'>('loading');
+  const [maxOrderNotionalQuote, setMaxOrderNotionalQuote] = useState('');
+  const [maxSymbolExposurePct, setMaxSymbolExposurePct] = useState('');
+  const [maxTotalExposurePct, setMaxTotalExposurePct] = useState('');
+  const [maxDailyLossPct, setMaxDailyLossPct] = useState('');
+  const [maxOpenPositions, setMaxOpenPositions] = useState('');
+  const [allowedSymbols, setAllowedSymbols] = useState('');
+
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState(() => generateIdempotencyKey());
+
+  const applyLimits = (limits: SimulationRiskLimits) => {
+    setMaxOrderNotionalQuote(String(limits.maxOrderNotionalQuote));
+    setMaxSymbolExposurePct(String(limits.maxSymbolExposurePct));
+    setMaxTotalExposurePct(String(limits.maxTotalExposurePct));
+    setMaxDailyLossPct(String(limits.maxDailyLossPct));
+    setMaxOpenPositions(String(limits.maxOpenPositions));
+    setAllowedSymbols(limits.allowedSymbols.join(', '));
+  };
+
+  const load = useCallback(() => {
+    setStatus('loading');
+    apiClient
+      .getSimulationRiskLimits()
+      .then((limits) => {
+        applyLimits(limits);
+        setStatus('loaded');
+      })
+      .catch(() => setStatus('failed'));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const parsedAllowedSymbols = allowedSymbols
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const canSave =
+    maxOrderNotionalQuote.trim() !== '' &&
+    maxSymbolExposurePct.trim() !== '' &&
+    maxTotalExposurePct.trim() !== '' &&
+    maxDailyLossPct.trim() !== '' &&
+    maxOpenPositions.trim() !== '' &&
+    parsedAllowedSymbols.length > 0;
+
+  const handleSave = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaved(false);
+    try {
+      const result = await apiClient.updateSimulationRiskLimits(
+        {
+          maxOrderNotionalQuote: Number(maxOrderNotionalQuote),
+          maxSymbolExposurePct: Number(maxSymbolExposurePct),
+          maxTotalExposurePct: Number(maxTotalExposurePct),
+          maxDailyLossPct: Number(maxDailyLossPct),
+          maxOpenPositions: Number(maxOpenPositions),
+          allowedSymbols: parsedAllowedSymbols,
+        },
+        idempotencyKey
+      );
+      applyLimits(result);
+      setSaved(true);
+      setIdempotencyKey(generateIdempotencyKey());
+    } catch (error) {
+      setSaveError(getErrorMessage(error));
+      setIdempotencyKey(generateIdempotencyKey());
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (status === 'loading') {
+    return (
+      <Card>
+        <Text variant="body" color="muted">
+          Cargando…
+        </Text>
+      </Card>
+    );
+  }
+
+  if (status === 'failed') {
+    return <ErrorState title="No se pudieron cargar tus límites de Simulación." onRetry={load} />;
+  }
+
+  return (
+    <Card style={{ gap: spacing.md }}>
+      <Text variant="body" color="secondary">
+        Estos límites aplican solo a tus bots en Simulación (dinero virtual) — nunca a órdenes reales. Ya
+        vienen con valores por default para que tus bots funcionen sin configurar nada; cambialos si querés
+        otro comportamiento.
+      </Text>
+
+      <View style={{ gap: spacing.sm }}>
+        <Text variant="caption" color="muted">
+          Notional máximo por orden (USDT)
+        </Text>
+        <TextInput
+          value={maxOrderNotionalQuote}
+          onChangeText={setMaxOrderNotionalQuote}
+          placeholder="Ej. 1000"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="decimal-pad"
+          style={fieldStyle()}
+        />
+      </View>
+
+      <View style={{ gap: spacing.sm }}>
+        <Text variant="caption" color="muted">
+          Exposición máxima por símbolo (%)
+        </Text>
+        <TextInput
+          value={maxSymbolExposurePct}
+          onChangeText={setMaxSymbolExposurePct}
+          placeholder="Ej. 50"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="decimal-pad"
+          style={fieldStyle()}
+        />
+      </View>
+
+      <View style={{ gap: spacing.sm }}>
+        <Text variant="caption" color="muted">
+          Exposición total máxima (%)
+        </Text>
+        <TextInput
+          value={maxTotalExposurePct}
+          onChangeText={setMaxTotalExposurePct}
+          placeholder="Ej. 100"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="decimal-pad"
+          style={fieldStyle()}
+        />
+      </View>
+
+      <View style={{ gap: spacing.sm }}>
+        <Text variant="caption" color="muted">
+          Pérdida diaria máxima (%)
+        </Text>
+        <TextInput
+          value={maxDailyLossPct}
+          onChangeText={setMaxDailyLossPct}
+          placeholder="Ej. 20"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="decimal-pad"
+          style={fieldStyle()}
+        />
+      </View>
+
+      <View style={{ gap: spacing.sm }}>
+        <Text variant="caption" color="muted">
+          Posiciones abiertas máximas
+        </Text>
+        <TextInput
+          value={maxOpenPositions}
+          onChangeText={setMaxOpenPositions}
+          placeholder="Ej. 5"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="number-pad"
+          style={fieldStyle()}
+        />
+      </View>
+
+      <View style={{ gap: spacing.sm }}>
+        <Text variant="caption" color="muted">
+          Símbolos permitidos (separados por coma)
+        </Text>
+        <TextInput
+          value={allowedSymbols}
+          onChangeText={setAllowedSymbols}
+          placeholder="Ej. BTCUSDT, ETHUSDT"
+          placeholderTextColor={colors.textMuted}
+          autoCapitalize="characters"
+          style={fieldStyle()}
+        />
+        <Text variant="caption" color="muted">
+          Al menos uno es obligatorio — a diferencia del trading real, acá no existe "sin restricción".
+        </Text>
+      </View>
+
+      {saveError ? (
+        <Text variant="body" style={{ color: colors.danger }}>
+          {saveError}
+        </Text>
+      ) : null}
+      {saved ? (
+        <Text variant="body" style={{ color: colors.success }}>
+          Guardado.
+        </Text>
+      ) : null}
+
+      <Button label={saving ? 'Guardando…' : 'Guardar'} onPress={handleSave} disabled={saving || !canSave} />
+    </Card>
+  );
+}
+
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
 
@@ -582,8 +790,12 @@ export default function SettingsScreen() {
         <BinanceAccountSection />
       </Section>
 
-      <Section title="Límites de riesgo">
+      <Section title="Límites de riesgo (trading real)">
         <RiskLimitsSection />
+      </Section>
+
+      <Section title="Límites de riesgo (Simulación)">
+        <SimulationRiskLimitsSection />
       </Section>
 
       <Section title="Trading Safety">

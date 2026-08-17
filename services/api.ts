@@ -38,6 +38,7 @@ import {
   Portfolio,
   Position,
   RiskProfile,
+  SimulationRiskLimits,
   SimulationConfig,
   TradingSwitchState,
   UserRiskLimits,
@@ -354,6 +355,15 @@ interface WireUserRiskLimits {
   allowed_symbols: string[] | null;
 }
 
+interface WireSimulationRiskLimits {
+  max_order_notional_quote: string;
+  max_symbol_exposure_pct: string;
+  max_total_exposure_pct: string;
+  max_daily_loss_pct: string;
+  max_open_positions: number;
+  allowed_symbols: string[];
+}
+
 interface WireTradingSwitchState {
   enabled: boolean;
 }
@@ -589,6 +599,17 @@ function mapConnectBinanceCredentialsResult(
   return { connected: true, apiKeyLast4: wire.api_key_last4, verifiedAt: wire.verified_at };
 }
 
+function mapSimulationRiskLimits(wire: WireSimulationRiskLimits): SimulationRiskLimits {
+  return {
+    maxOrderNotionalQuote: toNumber(wire.max_order_notional_quote),
+    maxSymbolExposurePct: toNumber(wire.max_symbol_exposure_pct),
+    maxTotalExposurePct: toNumber(wire.max_total_exposure_pct),
+    maxDailyLossPct: toNumber(wire.max_daily_loss_pct),
+    maxOpenPositions: wire.max_open_positions,
+    allowedSymbols: wire.allowed_symbols,
+  };
+}
+
 function mapUserRiskLimits(wire: WireUserRiskLimits): UserRiskLimits {
   return {
     maxOrderNotionalQuote: toNullableNumber(wire.max_order_notional_quote),
@@ -642,6 +663,11 @@ export interface HermesApiClient {
   disconnectBinanceCredentials(idempotencyKey: string): Promise<void>;
   getUserRiskLimits(): Promise<UserRiskLimits>;
   updateUserRiskLimits(body: UserRiskLimits, idempotencyKey: string): Promise<UserRiskLimits>;
+  getSimulationRiskLimits(): Promise<SimulationRiskLimits>;
+  updateSimulationRiskLimits(
+    body: SimulationRiskLimits,
+    idempotencyKey: string
+  ): Promise<SimulationRiskLimits>;
   getTradingSwitch(): Promise<TradingSwitchState>;
   setTradingSwitch(enabled: boolean, idempotencyKey: string): Promise<TradingSwitchState>;
 }
@@ -866,6 +892,30 @@ class HermesApiClientImpl implements HermesApiClient {
       },
     });
     return mapUserRiskLimits(wire);
+  }
+
+  async getSimulationRiskLimits(): Promise<SimulationRiskLimits> {
+    const wire = await request<WireSimulationRiskLimits>('/settings/simulation-risk-limits');
+    return mapSimulationRiskLimits(wire);
+  }
+
+  async updateSimulationRiskLimits(
+    body: SimulationRiskLimits,
+    idempotencyKey: string
+  ): Promise<SimulationRiskLimits> {
+    const wire = await request<WireSimulationRiskLimits>('/settings/simulation-risk-limits', {
+      method: 'PUT',
+      idempotencyKey,
+      body: {
+        max_order_notional_quote: body.maxOrderNotionalQuote,
+        max_symbol_exposure_pct: body.maxSymbolExposurePct,
+        max_total_exposure_pct: body.maxTotalExposurePct,
+        max_daily_loss_pct: body.maxDailyLossPct,
+        max_open_positions: body.maxOpenPositions,
+        allowed_symbols: body.allowedSymbols,
+      },
+    });
+    return mapSimulationRiskLimits(wire);
   }
 
   async getTradingSwitch(): Promise<TradingSwitchState> {
