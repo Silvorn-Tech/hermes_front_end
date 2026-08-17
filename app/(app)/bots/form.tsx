@@ -479,7 +479,7 @@ export default function BotFormScreen() {
             assetClass={assetClassOption === 'EQUITY' ? 'EQUITY' : 'CRYPTO'}
             value={instrument}
             onChange={setInstrument}
-            placeholder={assetClassOption === 'EQUITY' ? 'AAPL' : 'BTCUSDT'}
+            placeholder={assetClassOption === 'EQUITY' ? 'AAPLBUSDT' : 'BTCUSDT'}
             invalid={touched && !instrumentValid}
           />
           <Text variant="caption" color="muted">

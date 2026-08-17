@@ -144,7 +144,7 @@ describe('Bot create form — matches the approved prototype, wired to the real 
     expect(queryByText('PRESUPUESTO A UTILIZAR')).toBeNull();
     expect(getByText('CANTIDAD OBJETIVO')).toBeTruthy();
     expect(getByText(/feed de precios en vivo para acciones/)).toBeTruthy();
-    expect(queryByPlaceholderText('AAPL')).toBeTruthy();
+    expect(queryByPlaceholderText('AAPLBUSDT')).toBeTruthy();
     expect(mockApiClient.getMarketData).not.toHaveBeenCalled();
   });
 
@@ -191,7 +191,7 @@ describe('Bot create form — matches the approved prototype, wired to the real 
     await fireEvent.changeText(getByPlaceholderText('BTCUSDT'), 'ETH');
 
     expect(getByText('ETHUSDT')).toBeTruthy();
-    expect(queryByText('AAPL')).toBeNull(); // Crypto list, not Equity
+    expect(queryByText('AAPLBUSDT')).toBeNull(); // Crypto list, not Equity
 
     await fireEvent.press(getByText('ETHUSDT'));
     expect(getByPlaceholderText('BTCUSDT').props.value).toBe('ETHUSDT');
@@ -201,10 +201,10 @@ describe('Bot create form — matches the approved prototype, wired to the real 
     const { getByText, getByPlaceholderText, queryByText } = await render(<BotFormScreen />);
 
     await fireEvent.press(getByText('Acciones'));
-    await fireEvent(getByPlaceholderText('AAPL'), 'focus');
-    await fireEvent.changeText(getByPlaceholderText('AAPL'), 'MS');
+    await fireEvent(getByPlaceholderText('AAPLBUSDT'), 'focus');
+    await fireEvent.changeText(getByPlaceholderText('AAPLBUSDT'), 'MS');
 
-    expect(getByText('MSFT')).toBeTruthy();
+    expect(getByText('MSFTBUSDT')).toBeTruthy();
     expect(queryByText('BTCUSDT')).toBeNull();
   });
 
@@ -293,13 +293,13 @@ describe('Bot create form — matches the approved prototype, wired to the real 
     const { getByPlaceholderText, getByText } = await render(<BotFormScreen />);
     await fireEvent.changeText(getByPlaceholderText('Ej. Mi estrategia BTC'), 'My Equity Bot');
     await fireEvent.press(getByText('Acciones'));
-    await fireEvent.changeText(getByPlaceholderText('AAPL'), 'aapl');
+    await fireEvent.changeText(getByPlaceholderText('AAPLBUSDT'), 'aaplbusdt');
     await fireEvent.changeText(getByPlaceholderText('0.00'), '10');
     await fireEvent.press(getByText('Crear bot'));
 
     await waitFor(() => expect(createBot).toHaveBeenCalledTimes(1));
     const [payload] = createBot.mock.calls[0];
-    expect(payload).toMatchObject({ assetClass: 'EQUITY', instrument: 'AAPL', targetQuantity: '10' });
+    expect(payload).toMatchObject({ assetClass: 'EQUITY', instrument: 'AAPLBUSDT', targetQuantity: '10' });
   });
 
   it('shows a loading label and disables the button while submitting, never double-submits', async () => {

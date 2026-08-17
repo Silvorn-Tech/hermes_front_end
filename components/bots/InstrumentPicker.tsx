@@ -5,11 +5,26 @@ import { colors, radius, spacing } from '../../constants';
 
 /** A small, curated, hardcoded suggestion list per asset class — NOT a
  * live search against Binance or any broker. Hermes has no
- * `GET /instruments`-type endpoint (Crypto) and no broker integration at
- * all (Equity), so a real search is out of scope for now. Free text is
- * always still accepted; this only ever suggests, never restricts. */
+ * `GET /instruments`-type endpoint, and `execution_venue` is Binance-only
+ * today (see `hermes_v2`'s `ExecutionVenue`) — there is no separate equity
+ * broker. "Equity" instruments here are Binance's own tokenized-stock spot
+ * pairs (e.g. Backed Finance's `AAPLb`, traded as `AAPLBUSDT`) — a crypto
+ * derivative that tracks the share price, not real equity ownership. Every
+ * suggestion below is the *actual* tradable Binance symbol, confirmed
+ * against a real `GET /api/v3/exchangeInfo`, the same convention Crypto's
+ * list already follows (`BTCUSDT`, not bare `BTC`). Free text is always
+ * still accepted; this only ever suggests, never restricts. */
 const CRYPTO_INSTRUMENTS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT'];
-const EQUITY_INSTRUMENTS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NFLX'];
+const EQUITY_INSTRUMENTS = [
+  'AAPLBUSDT',
+  'MSFTBUSDT',
+  'NVDABUSDT',
+  'GOOGLBUSDT',
+  'AMZNBUSDT',
+  'TSLABUSDT',
+  'METABUSDT',
+  'NFLXBUSDT',
+];
 
 interface Props {
   assetClass: 'CRYPTO' | 'EQUITY';
