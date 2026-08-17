@@ -2,8 +2,6 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import {
   ActivityEvent,
   Bot,
-  BotId,
-  BotLifecycleStatus,
   Order,
   Portfolio,
   Position,
@@ -11,7 +9,15 @@ import {
   Signal,
 } from '../types';
 import * as mock from '../services/mockData';
-import { apiClient, CreateOrderRequest, HermesApiError, OrderActionResult } from '../services/api';
+import {
+  apiClient,
+  BotActionResult,
+  CreateBotRequest,
+  CreateOrderRequest,
+  HermesApiError,
+  OrderActionResult,
+  UpdateBotRequest,
+} from '../services/api';
 import { useAuth } from './AuthContext';
 
 export type LoadStatus = 'loading' | 'ready' | 'error';
@@ -37,17 +43,23 @@ interface HermesDataValue {
   orders: Order[];
   ordersError: string | null;
   bots: Bot[];
+  botsError: string | null;
   signals: Signal[];
   activityEvents: ActivityEvent[];
   risk: RiskSnapshot;
   realExposure: RealExposure;
-  setBotLifecycleStatus: (botId: BotId, status: BotLifecycleStatus) => void;
   refresh: () => Promise<void>;
   refreshOrders: () => Promise<void>;
   refreshPositions: () => Promise<void>;
+  refreshBots: () => Promise<void>;
   closePosition: (symbol: string, idempotencyKey: string) => Promise<OrderActionResult>;
   cancelOrder: (orderId: string, idempotencyKey: string) => Promise<OrderActionResult>;
   createOrder: (body: CreateOrderRequest, idempotencyKey: string) => Promise<OrderActionResult>;
+  createBot: (body: CreateBotRequest, idempotencyKey: string) => Promise<BotActionResult>;
+  updateBot: (botId: string, body: UpdateBotRequest, idempotencyKey: string) => Promise<BotActionResult>;
+  pauseBot: (botId: string, idempotencyKey: string) => Promise<BotActionResult>;
+  resumeBot: (botId: string, idempotencyKey: string) => Promise<BotActionResult>;
+  stopBot: (botId: string, idempotencyKey: string) => Promise<BotActionResult>;
 }
 
 const HermesDataContext = createContext<HermesDataValue | undefined>(undefined);
@@ -66,10 +78,11 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
   const [positionsError, setPositionsError] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [bots, setBots] = useState<Bot[]>([]);
+  const [botsError, setBotsError] = useState<string | null>(null);
 
-  // Bots/signals/activity have no backend domain yet — still fully mock,
-  // per the task's explicit scope (see docs on the Risk/Bots/Signals screens).
-  const [bots, setBots] = useState<Bot[]>(mock.bots);
+  // Signals/Activity have no backend domain yet — still fully mock, per
+  // the task's explicit scope (see docs on the Risk/Signals screens).
 
   const handlePotential401 = useCallback(
     (error: unknown) => {
@@ -113,9 +126,20 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
     }
   }, [handlePotential401]);
 
+  const refreshBots = useCallback(async () => {
+    try {
+      const result = await apiClient.getBots();
+      setBots(result);
+      setBotsError(null);
+    } catch (error) {
+      setBotsError(describeError(error, 'No se pudieron cargar los bots.'));
+      handlePotential401(error);
+    }
+  }, [handlePotential401]);
+
   const refresh = useCallback(async () => {
-    await Promise.allSettled([fetchPortfolio(), refreshPositions(), refreshOrders()]);
-  }, [fetchPortfolio, refreshPositions, refreshOrders]);
+    await Promise.allSettled([fetchPortfolio(), refreshPositions(), refreshOrders(), refreshBots()]);
+  }, [fetchPortfolio, refreshPositions, refreshOrders, refreshBots]);
 
   useEffect(() => {
     // HermesDataProvider is mounted before the root navigator's auth gate
@@ -128,6 +152,7 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
       setPortfolio(null);
       setPositions([]);
       setOrders([]);
+      setBots([]);
       return;
     }
 
@@ -144,13 +169,6 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
     // isAuthorized is the only thing that should restart the initial load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthorized]);
-
-  // No Bot API exists on the backend yet — this is a local-only preview
-  // mutation (see components/common/PreviewBanner.tsx usage on the Bots
-  // screens), never persisted, reset to mock defaults on reload.
-  const setBotLifecycleStatus = (botId: BotId, status: BotLifecycleStatus) => {
-    setBots((prev) => prev.map((b) => (b.id === botId ? { ...b, status } : b)));
-  };
 
   const closePosition = useCallback(
     async (symbol: string, idempotencyKey: string) => {
@@ -194,6 +212,76 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
     [refreshOrders, refreshPositions, handlePotential401]
   );
 
+  const createBot = useCallback(
+    async (body: CreateBotRequest, idempotencyKey: string) => {
+      try {
+        const result = await apiClient.createBot(body, idempotencyKey);
+        await refreshBots();
+        return result;
+      } catch (error) {
+        handlePotential401(error);
+        throw error;
+      }
+    },
+    [refreshBots, handlePotential401]
+  );
+
+  const updateBot = useCallback(
+    async (botId: string, body: UpdateBotRequest, idempotencyKey: string) => {
+      try {
+        const result = await apiClient.updateBot(botId, body, idempotencyKey);
+        await refreshBots();
+        return result;
+      } catch (error) {
+        handlePotential401(error);
+        throw error;
+      }
+    },
+    [refreshBots, handlePotential401]
+  );
+
+  const pauseBot = useCallback(
+    async (botId: string, idempotencyKey: string) => {
+      try {
+        const result = await apiClient.pauseBot(botId, idempotencyKey);
+        await Promise.allSettled([refreshBots(), refreshOrders()]);
+        return result;
+      } catch (error) {
+        handlePotential401(error);
+        throw error;
+      }
+    },
+    [refreshBots, refreshOrders, handlePotential401]
+  );
+
+  const resumeBot = useCallback(
+    async (botId: string, idempotencyKey: string) => {
+      try {
+        const result = await apiClient.resumeBot(botId, idempotencyKey);
+        await Promise.allSettled([refreshBots(), refreshOrders()]);
+        return result;
+      } catch (error) {
+        handlePotential401(error);
+        throw error;
+      }
+    },
+    [refreshBots, refreshOrders, handlePotential401]
+  );
+
+  const stopBot = useCallback(
+    async (botId: string, idempotencyKey: string) => {
+      try {
+        const result = await apiClient.stopBot(botId, idempotencyKey);
+        await refreshBots();
+        return result;
+      } catch (error) {
+        handlePotential401(error);
+        throw error;
+      }
+    },
+    [refreshBots, handlePotential401]
+  );
+
   const realExposure = useMemo<RealExposure>(() => {
     if (!portfolio || portfolio.totalValueQuote <= 0) {
       return { totalPct: null, bySymbol: [] };
@@ -222,17 +310,23 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
       orders,
       ordersError,
       bots,
+      botsError,
       signals: mock.signals,
       activityEvents: mock.activityEvents,
       risk: mock.riskSnapshot,
       realExposure,
-      setBotLifecycleStatus,
       refresh,
       refreshOrders,
       refreshPositions,
+      refreshBots,
       closePosition,
       cancelOrder,
       createOrder,
+      createBot,
+      updateBot,
+      pauseBot,
+      resumeBot,
+      stopBot,
     }),
     [
       status,
@@ -243,13 +337,20 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
       orders,
       ordersError,
       bots,
+      botsError,
       realExposure,
       refresh,
       refreshOrders,
       refreshPositions,
+      refreshBots,
       closePosition,
       cancelOrder,
       createOrder,
+      createBot,
+      updateBot,
+      pauseBot,
+      resumeBot,
+      stopBot,
     ]
   );
 

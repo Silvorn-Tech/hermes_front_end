@@ -1,11 +1,12 @@
 /**
  * Real Hermes v2 backend client.
  *
- * Every function here calls exactly one of the 9 endpoints Hermes v2
- * actually implements (see hermes_v2's docs/architecture/trading.md) —
- * nothing is assumed or invented. There is no Bots/Signals/Activity/Risk-
- * snapshot client here because no such endpoint exists yet; those stay
- * mock-sourced in hooks/HermesDataContext.tsx.
+ * Every function here calls exactly one of the endpoints Hermes v2
+ * actually implements (see hermes_v2's docs/architecture/trading.md and
+ * its Bot domain docs) — nothing is assumed or invented. There is no
+ * Signals/Activity/Risk-snapshot client here because no such endpoint
+ * exists yet; those stay mock-sourced in hooks/HermesDataContext.tsx.
+ * Bots are real as of the Bot domain phase.
  *
  * Auth is cookie-based, exactly like services/auth.ts: every request sends
  * `credentials: 'include'` and the `hermes_session` httpOnly cookie does
@@ -20,12 +21,18 @@
  */
 
 import {
+  AssetClass,
   Balance,
+  Bot,
+  EquityCurve,
+  EquityPeriod,
+  ExecutionVenue,
   Order,
   OrderSide,
   OrderType,
   Portfolio,
   Position,
+  RiskProfile,
 } from '../types';
 
 export class HermesApiError extends Error {
@@ -51,7 +58,7 @@ function baseUrl(): string {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PATCH';
   query?: Record<string, string | undefined>;
   body?: unknown;
   idempotencyKey?: string;
@@ -133,6 +140,24 @@ interface WirePortfolio {
   balances: WireBalance[];
 }
 
+interface WireEquityPoint {
+  t: string;
+  v: string;
+}
+
+/** GET /portfolio/history's backend period values — a different set from
+ * the UI's own `EquityPeriod` tab keys (`7D/1M/3M/1Y`); see
+ * `BACKEND_PERIOD_BY_UI_PERIOD` for the mapping between the two. */
+type BackendPortfolioHistoryPeriod = '1D' | '7D' | '30D' | '90D' | '1Y';
+
+interface WireEquityCurve {
+  period: BackendPortfolioHistoryPeriod;
+  quote_asset: string;
+  points: WireEquityPoint[];
+  return_pct: string | null;
+  max_drawdown_pct: string | null;
+}
+
 interface WirePosition {
   symbol: string;
   asset: string;
@@ -146,6 +171,7 @@ interface WirePosition {
 
 interface WireOrder {
   id: string;
+  bot_id: string | null;
   symbol: string;
   side: OrderSide;
   order_type: OrderType;
@@ -159,6 +185,23 @@ interface WireOrder {
   created_at: string | null;
   submitted_at: string | null;
   terminal_at: string | null;
+}
+
+interface WireBot {
+  id: string;
+  name: string;
+  risk_profile: RiskProfile;
+  asset_class: AssetClass;
+  execution_venue: ExecutionVenue;
+  instrument: string;
+  strategy_model: string | null;
+  strategy_config: Record<string, unknown> | null;
+  status: string;
+  current_quantity: string;
+  target_quantity: string;
+  paused_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface MarketData {
@@ -189,6 +232,38 @@ interface WireOrderActionResult {
   order: WireOrder | null;
   status: string;
   reason: string | null;
+}
+
+export interface BotActionResult {
+  bot: Bot | null;
+  status: string;
+  reason: string | null;
+}
+
+interface WireBotActionResult {
+  bot: WireBot | null;
+  status: string;
+  reason: string | null;
+}
+
+export interface CreateBotRequest {
+  name: string;
+  riskProfile: RiskProfile;
+  assetClass: AssetClass;
+  executionVenue: ExecutionVenue;
+  instrument: string;
+  /** Kept as the raw string the user typed — same reasoning as
+   * CreateOrderRequest.quantity: never round-tripped through a JS number. */
+  targetQuantity: string;
+  strategyModel?: string;
+  strategyConfig?: Record<string, unknown>;
+}
+
+export interface UpdateBotRequest {
+  name?: string;
+  targetQuantity?: string;
+  strategyModel?: string;
+  strategyConfig?: Record<string, unknown>;
 }
 
 export interface CreateOrderRequest {
@@ -232,7 +307,23 @@ function mapPortfolio(wire: WirePortfolio): Portfolio {
     balances: wire.balances.map(mapBalance),
     dailyPnl: null,
     dailyPnlPct: null,
-    equityCurves: null,
+  };
+}
+
+/** The Dashboard's existing 4 period tabs, unchanged (no design change),
+ * mapped to the 5 periods `GET /portfolio/history` actually supports. */
+const BACKEND_PERIOD_BY_UI_PERIOD: Record<EquityPeriod, BackendPortfolioHistoryPeriod> = {
+  '7D': '7D',
+  '1M': '30D',
+  '3M': '90D',
+  '1Y': '1Y',
+};
+
+function mapEquityCurve(wire: WireEquityCurve): EquityCurve {
+  return {
+    points: wire.points.map((p) => ({ t: p.t, v: toNumber(p.v) })),
+    returnPct: toNullableNumber(wire.return_pct),
+    maxDrawdownPct: toNullableNumber(wire.max_drawdown_pct),
   };
 }
 
@@ -253,6 +344,7 @@ function mapPosition(wire: WirePosition): Position {
 function mapOrder(wire: WireOrder): Order {
   return {
     id: wire.id,
+    botId: wire.bot_id,
     symbol: wire.symbol,
     side: wire.side,
     type: wire.order_type,
@@ -286,10 +378,38 @@ function mapOrderActionResult(wire: WireOrderActionResult): OrderActionResult {
   };
 }
 
+function mapBot(wire: WireBot): Bot {
+  return {
+    id: wire.id,
+    name: wire.name,
+    riskProfile: wire.risk_profile,
+    assetClass: wire.asset_class,
+    executionVenue: wire.execution_venue,
+    instrument: wire.instrument,
+    strategyModel: wire.strategy_model,
+    strategyConfig: wire.strategy_config,
+    status: wire.status as Bot['status'],
+    currentQuantity: toNumber(wire.current_quantity),
+    targetQuantity: toNumber(wire.target_quantity),
+    pausedAt: wire.paused_at,
+    createdAt: wire.created_at,
+    updatedAt: wire.updated_at,
+  };
+}
+
+function mapBotActionResult(wire: WireBotActionResult): BotActionResult {
+  return {
+    bot: wire.bot ? mapBot(wire.bot) : null,
+    status: wire.status,
+    reason: wire.reason,
+  };
+}
+
 // --- public client ---
 
 export interface HermesApiClient {
   getPortfolio(): Promise<Portfolio>;
+  getPortfolioHistory(period: EquityPeriod): Promise<EquityCurve>;
   getBalances(): Promise<Balance[]>;
   getMarketData(symbol: string): Promise<MarketData>;
   getPositions(): Promise<Position[]>;
@@ -298,12 +418,26 @@ export interface HermesApiClient {
   createOrder(body: CreateOrderRequest, idempotencyKey: string): Promise<OrderActionResult>;
   cancelOrder(orderId: string, idempotencyKey: string): Promise<OrderActionResult>;
   closePosition(symbol: string, idempotencyKey: string): Promise<OrderActionResult>;
+  getBots(): Promise<Bot[]>;
+  getBot(id: string): Promise<Bot>;
+  createBot(body: CreateBotRequest, idempotencyKey: string): Promise<BotActionResult>;
+  updateBot(id: string, body: UpdateBotRequest, idempotencyKey: string): Promise<BotActionResult>;
+  pauseBot(id: string, idempotencyKey: string): Promise<BotActionResult>;
+  resumeBot(id: string, idempotencyKey: string): Promise<BotActionResult>;
+  stopBot(id: string, idempotencyKey: string): Promise<BotActionResult>;
 }
 
 class HermesApiClientImpl implements HermesApiClient {
   async getPortfolio(): Promise<Portfolio> {
     const wire = await request<WirePortfolio>('/portfolio');
     return mapPortfolio(wire);
+  }
+
+  async getPortfolioHistory(period: EquityPeriod): Promise<EquityCurve> {
+    const wire = await request<WireEquityCurve>('/portfolio/history', {
+      query: { period: BACKEND_PERIOD_BY_UI_PERIOD[period] },
+    });
+    return mapEquityCurve(wire);
   }
 
   async getBalances(): Promise<Balance[]> {
@@ -362,6 +496,76 @@ class HermesApiClientImpl implements HermesApiClient {
       { method: 'POST', idempotencyKey }
     );
     return mapOrderActionResult(wire);
+  }
+
+  async getBots(): Promise<Bot[]> {
+    const wire = await request<{ bots: WireBot[] }>('/bots');
+    return wire.bots.map(mapBot);
+  }
+
+  async getBot(id: string): Promise<Bot> {
+    const wire = await request<WireBot>(`/bots/${encodeURIComponent(id)}`);
+    return mapBot(wire);
+  }
+
+  async createBot(body: CreateBotRequest, idempotencyKey: string): Promise<BotActionResult> {
+    const wire = await request<WireBotActionResult>('/bots', {
+      method: 'POST',
+      idempotencyKey,
+      body: {
+        name: body.name,
+        risk_profile: body.riskProfile,
+        asset_class: body.assetClass,
+        execution_venue: body.executionVenue,
+        instrument: body.instrument,
+        target_quantity: body.targetQuantity,
+        strategy_model: body.strategyModel,
+        strategy_config: body.strategyConfig,
+      },
+    });
+    return mapBotActionResult(wire);
+  }
+
+  async updateBot(
+    id: string,
+    body: UpdateBotRequest,
+    idempotencyKey: string
+  ): Promise<BotActionResult> {
+    const wire = await request<WireBotActionResult>(`/bots/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      idempotencyKey,
+      body: {
+        name: body.name,
+        target_quantity: body.targetQuantity,
+        strategy_model: body.strategyModel,
+        strategy_config: body.strategyConfig,
+      },
+    });
+    return mapBotActionResult(wire);
+  }
+
+  async pauseBot(id: string, idempotencyKey: string): Promise<BotActionResult> {
+    const wire = await request<WireBotActionResult>(`/bots/${encodeURIComponent(id)}/pause`, {
+      method: 'POST',
+      idempotencyKey,
+    });
+    return mapBotActionResult(wire);
+  }
+
+  async resumeBot(id: string, idempotencyKey: string): Promise<BotActionResult> {
+    const wire = await request<WireBotActionResult>(`/bots/${encodeURIComponent(id)}/resume`, {
+      method: 'POST',
+      idempotencyKey,
+    });
+    return mapBotActionResult(wire);
+  }
+
+  async stopBot(id: string, idempotencyKey: string): Promise<BotActionResult> {
+    const wire = await request<WireBotActionResult>(`/bots/${encodeURIComponent(id)}/stop`, {
+      method: 'POST',
+      idempotencyKey,
+    });
+    return mapBotActionResult(wire);
   }
 }
 

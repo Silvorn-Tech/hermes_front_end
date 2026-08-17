@@ -58,7 +58,6 @@ async function setup() {
     balances: [],
     dailyPnl: null,
     dailyPnlPct: null,
-    equityCurves: null,
   });
   mockApiClient.getPositions.mockResolvedValue([]);
   mockApiClient.getOrders.mockResolvedValue({ orders: [], count: 0 });

@@ -40,7 +40,7 @@ export function PositionRow({ position, bot, density, onPress }: Props) {
           {position.direction === 'long' ? 'Long' : 'Short'}
         </Text>
         <View style={{ flex: col.bot, flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: bot ? botColors[bot.id] : colors.textMuted }} />
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: bot ? botColors[bot.riskProfile] : colors.textMuted }} />
           <Text variant="body" color="secondary">
             {bot?.name ?? '—'}
           </Text>

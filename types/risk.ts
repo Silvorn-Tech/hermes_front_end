@@ -1,4 +1,5 @@
-import { BotId, RiskLevel } from './common';
+import { RiskLevel } from './common';
+import { RiskProfile } from './bot';
 
 export interface RiskLimitItem {
   label: string;
@@ -34,11 +35,15 @@ export interface RiskSnapshot {
   headline: string;
   description: string;
   exposureTotalPct: number;
-  exposureByBot: Record<BotId, number>;
+  /** Keyed by risk profile, not by a specific bot's id — real bots are
+   * arbitrary entities now, so this preview illustrates "roughly how much
+   * exposure a bot with this profile tends to carry," applied to every
+   * real bot sharing that profile. Still entirely mock/preview data. */
+  exposureByRiskProfile: Record<RiskProfile, number>;
   drawdownCurrentPct: number;
   drawdownMaxPct: number;
   dailyLimits: RiskLimitItem[];
-  riskByBot: Record<BotId, RiskLevel>;
+  riskByRiskProfile: Record<RiskProfile, RiskLevel>;
   concentration: ConcentrationItem[];
   history: RiskHistoryPoint[];
   circuitBreaker: CircuitBreakerState;

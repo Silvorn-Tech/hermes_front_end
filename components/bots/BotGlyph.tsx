@@ -2,23 +2,22 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, View } from 'react-native';
 import Svg, { Circle, Path, Line } from 'react-native-svg';
 import { colors } from '../../constants';
-import { BotId } from '../../types';
+import { RiskProfile } from '../../types';
 
 interface Props {
-  botId: BotId;
+  riskProfile: RiskProfile;
   size?: number;
   active?: boolean;
 }
 
-const glyphColor: Record<BotId, string> = {
-  sentinel: colors.bots.sentinel,
-  equilibrium: colors.bots.equilibrium,
-  vortex: colors.bots.vortex,
+const glyphColor: Record<RiskProfile, string> = {
+  SENTINEL: colors.bots.SENTINEL,
+  EQUILIBRIUM: colors.bots.EQUILIBRIUM,
+  VORTEX: colors.bots.VORTEX,
 };
 
-function GlyphShape({ botId, size, color }: { botId: BotId; size: number; color: string }) {
-  const c = size / 2;
-  if (botId === 'sentinel') {
+function GlyphShape({ riskProfile, size, color }: { riskProfile: RiskProfile; size: number; color: string }) {
+  if (riskProfile === 'SENTINEL') {
     return (
       <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
         <Path
@@ -30,7 +29,7 @@ function GlyphShape({ botId, size, color }: { botId: BotId; size: number; color:
       </Svg>
     );
   }
-  if (botId === 'equilibrium') {
+  if (riskProfile === 'EQUILIBRIUM') {
     return (
       <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
         <Line x1="12" y1="4.5" x2="12" y2="18" stroke={color} strokeWidth={1.6} />
@@ -54,8 +53,8 @@ function GlyphShape({ botId, size, color }: { botId: BotId; size: number; color:
   );
 }
 
-/** Abstract geometric mark per bot — differentiated by hue + shape, never a literal icon. */
-export function BotGlyph({ botId, size = 32, active }: Props) {
+/** Abstract geometric mark per risk profile — differentiated by hue + shape, never a literal icon. */
+export function BotGlyph({ riskProfile, size = 32, active }: Props) {
   const pulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -70,7 +69,7 @@ export function BotGlyph({ botId, size = 32, active }: Props) {
     return () => loop.stop();
   }, [active, pulse]);
 
-  const color = glyphColor[botId];
+  const color = glyphColor[riskProfile];
 
   return (
     <Animated.View
@@ -85,7 +84,7 @@ export function BotGlyph({ botId, size = 32, active }: Props) {
       }}
     >
       <View>
-        <GlyphShape botId={botId} size={size * 0.6} color={color} />
+        <GlyphShape riskProfile={riskProfile} size={size * 0.6} color={color} />
       </View>
     </Animated.View>
   );

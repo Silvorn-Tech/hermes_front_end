@@ -39,7 +39,7 @@ export function OrderRow({ order, bot, onPress }: Props) {
           <Badge label={orderStatusLabel[order.status]} tone={orderStatusTone[order.status]} />
         </View>
         <View style={{ flex: col.bot, flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: bot ? botColors[bot.id] : colors.textMuted }} />
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: bot ? botColors[bot.riskProfile] : colors.textMuted }} />
           <Text variant="body" color="secondary">
             {bot?.name ?? '—'}
           </Text>

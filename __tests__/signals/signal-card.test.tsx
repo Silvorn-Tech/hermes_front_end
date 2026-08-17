@@ -36,12 +36,15 @@ describe('SignalCard action button — real navigation, never a dead affordance'
     expect(mockPush).toHaveBeenCalledWith('/risk');
   });
 
-  it('navigates to /bots/{botId} for a bot-tagged action_required signal', async () => {
+  it('renders no action button for a bot-tagged signal — the mock botId no longer resolves to a real bot', async () => {
+    // Real bots have arbitrary backend-issued ids; a mock signal's legacy
+    // 'vortex' label would 404 if used as a navigation target, so the
+    // action button simply isn't rendered rather than linking to nothing.
     const signal = actionRequiredSignal({ source: 'vortex', botId: 'vortex' });
-    const { getByText } = await render(<SignalCard signal={signal} relatedEvents={[]} />);
+    const { queryByText } = await render(<SignalCard signal={signal} relatedEvents={[]} />);
 
-    await fireEvent.press(getByText('Revisar'));
-    expect(mockPush).toHaveBeenCalledWith('/bots/vortex');
+    expect(queryByText('Revisar')).toBeNull();
+    expect(mockPush).not.toHaveBeenCalled();
   });
 
   it('renders no action button when there is no sensible navigation target', async () => {

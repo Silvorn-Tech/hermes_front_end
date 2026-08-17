@@ -125,9 +125,8 @@ export default function RiskScreen() {
             {bots.map((bot) => (
               <ExposureBar
                 key={bot.id}
-                pct={risk.exposureByBot[bot.id]}
-                limitPct={bot.exposure.limitPct}
-                color={botColors[bot.id]}
+                pct={risk.exposureByRiskProfile[bot.riskProfile]}
+                color={botColors[bot.riskProfile]}
                 label={bot.name}
               />
             ))}
@@ -167,7 +166,7 @@ export default function RiskScreen() {
       <Section title="Risk by bot">
         <Card style={{ paddingVertical: spacing.xs }}>
           {bots.map((bot) => (
-            <RiskStateRow key={bot.id} label={bot.name} level={risk.riskByBot[bot.id]} />
+            <RiskStateRow key={bot.id} label={bot.name} level={risk.riskByRiskProfile[bot.riskProfile]} />
           ))}
         </Card>
       </Section>

@@ -51,6 +51,51 @@ describe('HermesApiClient — every call uses the session cookie, never a bearer
     expect(options.headers.Authorization).toBeUndefined();
   });
 
+  it('getPortfolioHistory maps the UI period to the backend period and decimal-string points to numbers', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        period: '30D',
+        quote_asset: 'USDT',
+        points: [
+          { t: '2026-08-15T00:00:00Z', v: '1000.0000000000' },
+          { t: '2026-08-16T00:00:00Z', v: '1100.0000000000' },
+        ],
+        return_pct: '10.0',
+        max_drawdown_pct: '2.5',
+      })
+    );
+
+    const curve = await apiClient.getPortfolioHistory('1M');
+
+    expect(curve.points).toEqual([
+      { t: '2026-08-15T00:00:00Z', v: 1000 },
+      { t: '2026-08-16T00:00:00Z', v: 1100 },
+    ]);
+    expect(curve.returnPct).toBe(10.0);
+    expect(curve.maxDrawdownPct).toBe(2.5);
+
+    const [url] = lastCall();
+    expect(url).toBe('https://hermes.test/portfolio/history?period=30D');
+  });
+
+  it('getPortfolioHistory maps null return/drawdown to null, not 0', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        period: '7D',
+        quote_asset: 'USDT',
+        points: [],
+        return_pct: null,
+        max_drawdown_pct: null,
+      })
+    );
+
+    const curve = await apiClient.getPortfolioHistory('7D');
+
+    expect(curve.points).toEqual([]);
+    expect(curve.returnPct).toBeNull();
+    expect(curve.maxDrawdownPct).toBeNull();
+  });
+
   it('getPositions maps null (unpriced) fields to null, never to 0', async () => {
     (global.fetch as jest.Mock).mockResolvedValueOnce(
       mockJsonResponse(200, {
@@ -175,6 +220,103 @@ describe('HermesApiClient — every call uses the session cookie, never a bearer
     const [url] = lastCall();
     // symbol must be URL-encoded, not injected raw into the path.
     expect(url).toBe('https://hermes.test/positions/BTC%2FUSDT/close');
+  });
+
+  it('getBots maps every bot in the list, decimal-string quantities included', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        bots: [
+          {
+            id: 'bot-1',
+            name: 'Vortex Runner',
+            risk_profile: 'VORTEX',
+            asset_class: 'CRYPTO',
+            execution_venue: 'BINANCE',
+            instrument: 'BTCUSDT',
+            strategy_model: 'GARCH',
+            strategy_config: null,
+            status: 'ACTIVE',
+            current_quantity: '0.0150000000',
+            target_quantity: '0.0150000000',
+            paused_at: null,
+            created_at: '2026-08-16T00:00:00Z',
+            updated_at: '2026-08-16T00:00:00Z',
+          },
+        ],
+      })
+    );
+
+    const bots = await apiClient.getBots();
+    expect(bots).toEqual([
+      {
+        id: 'bot-1',
+        name: 'Vortex Runner',
+        riskProfile: 'VORTEX',
+        assetClass: 'CRYPTO',
+        executionVenue: 'BINANCE',
+        instrument: 'BTCUSDT',
+        strategyModel: 'GARCH',
+        strategyConfig: null,
+        status: 'ACTIVE',
+        currentQuantity: 0.015,
+        targetQuantity: 0.015,
+        pausedAt: null,
+        createdAt: '2026-08-16T00:00:00Z',
+        updatedAt: '2026-08-16T00:00:00Z',
+      },
+    ]);
+    expect(lastCall()[0]).toBe('https://hermes.test/bots');
+  });
+
+  it('createBot sends the raw target_quantity string unmodified with the idempotency key', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(201, {
+        bot: null,
+        status: 'PAUSED',
+        reason: null,
+      })
+    );
+
+    await apiClient.createBot(
+      {
+        name: 'New Bot',
+        riskProfile: 'SENTINEL',
+        assetClass: 'CRYPTO',
+        executionVenue: 'BINANCE',
+        instrument: 'BTCUSDT',
+        targetQuantity: '0.00012345',
+      },
+      'key-1'
+    );
+
+    const [url, options] = lastCall();
+    expect(url).toBe('https://hermes.test/bots');
+    expect(options.method).toBe('POST');
+    expect(options.headers['Idempotency-Key']).toBe('key-1');
+    const sentBody = JSON.parse(options.body);
+    expect(sentBody.target_quantity).toBe('0.00012345');
+    expect(sentBody.risk_profile).toBe('SENTINEL');
+  });
+
+  it('updateBot issues a PATCH to the bot-specific path', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockJsonResponse(200, { bot: null, status: 'PAUSED', reason: null }));
+    await apiClient.updateBot('bot-1', { name: 'Renamed' }, 'key-2');
+    const [url, options] = lastCall();
+    expect(url).toBe('https://hermes.test/bots/bot-1');
+    expect(options.method).toBe('PATCH');
+  });
+
+  it.each([
+    ['pauseBot', 'pause'],
+    ['resumeBot', 'resume'],
+    ['stopBot', 'stop'],
+  ] as const)('%s posts to /bots/{id}/%s with the idempotency key', async (method, path) => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockJsonResponse(200, { bot: null, status: 'REJECTED', reason: 'Trading is disabled.' }));
+    await apiClient[method]('bot-1', 'key-3');
+    const [url, options] = lastCall();
+    expect(url).toBe(`https://hermes.test/bots/bot-1/${path}`);
+    expect(options.method).toBe('POST');
+    expect(options.headers['Idempotency-Key']).toBe('key-3');
   });
 });
 

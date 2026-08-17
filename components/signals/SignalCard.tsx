@@ -7,7 +7,7 @@ import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { BotGlyph } from '../bots/BotGlyph';
 import { colors, spacing, radius, motion } from '../../constants';
-import { ActivityEvent, Signal, SignalLevel } from '../../types';
+import { ActivityEvent, RiskProfile, Signal, SignalLevel } from '../../types';
 import { formatRelativeTime } from '../../utils/format';
 
 const levelMeta: Record<SignalLevel, { label: string; color: string }> = {
@@ -26,6 +26,17 @@ const sourceLabel: Record<Signal['source'], string> = {
   system: 'Sistema',
 };
 
+// Signals/Activity remain mock — this repo's mock data still labels a
+// signal's originating bot with these 3 legacy strings, which no longer
+// resolve to any real bot (real bots have arbitrary backend-issued ids).
+// This mapping exists only to color the mock signal's glyph; it's never
+// used to navigate anywhere or treated as real bot data.
+const mockBotRiskProfile: Record<string, RiskProfile> = {
+  sentinel: 'SENTINEL',
+  equilibrium: 'EQUILIBRIUM',
+  vortex: 'VORTEX',
+};
+
 interface Props {
   signal: Signal;
   relatedEvents: ActivityEvent[];
@@ -33,11 +44,12 @@ interface Props {
 
 /** Where "Revisar" for this signal should actually take the user — real
  * navigation to the screen that owns the relevant data, never a dead
- * button. `undefined` when there's no sensible target, in which case the
- * action button simply isn't rendered even if `actionLabel` is set. */
+ * button. Only risk-sourced signals have a real target: a signal's mock
+ * `botId` no longer resolves to a real bot (see mockBotRiskProfile above),
+ * so that button simply isn't rendered rather than 404ing on a fabricated
+ * link. */
 function resolveActionRoute(signal: Signal): string | undefined {
   if (signal.source === 'risk') return '/risk';
-  if (signal.botId) return `/bots/${signal.botId}`;
   return undefined;
 }
 
@@ -56,8 +68,8 @@ export function SignalCard({ signal, relatedEvents }: Props) {
       style={{ gap: spacing.md }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }}>
-        {signal.botId ? (
-          <BotGlyph botId={signal.botId} size={28} />
+        {signal.botId && mockBotRiskProfile[signal.botId] ? (
+          <BotGlyph riskProfile={mockBotRiskProfile[signal.botId]} size={28} />
         ) : (
           <View
             style={{

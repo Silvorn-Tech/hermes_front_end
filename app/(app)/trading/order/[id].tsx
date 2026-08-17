@@ -82,7 +82,7 @@ export default function OrderDetailScreen() {
         <Card>
           <Row label="Side" value={order.side === 'BUY' ? 'Compra' : 'Venta'} />
           <Row label="Order type" value={orderTypeLabel[order.type]} />
-          {bot ? <Row label="Bot" value={bot.name} /> : null}
+          <Row label="Origin" value={bot ? `Bot · ${bot.name}` : 'Manual'} />
           <Row label="Quantity" value={String(order.size)} />
           <Row label="Executed" value={formatOrDash(order.executedQuantity, String)} />
           <Row label="Price" value={order.type === 'MARKET' ? 'Market' : formatOrDash(order.price, formatPrice)} />

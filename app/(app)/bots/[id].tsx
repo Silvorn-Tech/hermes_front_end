@@ -9,34 +9,45 @@ import { Badge } from '../../../components/common/Badge';
 import { Button } from '../../../components/common/Button';
 import { EmptyState } from '../../../components/common/EmptyState';
 import { ConfirmDialog } from '../../../components/common/ConfirmDialog';
-import { PreviewBanner } from '../../../components/common/PreviewBanner';
-import { BotGlyph } from '../../../components/bots/BotGlyph';
-import { ExposureBar } from '../../../components/bots/ExposureBar';
-import { RiskStateBadge } from '../../../components/risk/RiskState';
-import { SignalCard } from '../../../components/signals/SignalCard';
 import { useHermesData } from '../../../hooks/HermesDataContext';
-import { colors, spacing, bots as botColors } from '../../../constants';
-import { BotId } from '../../../types';
-import { formatPercent, formatRelativeTime } from '../../../utils/format';
+import { colors, spacing } from '../../../constants';
+import { generateIdempotencyKey } from '../../../services/idempotency';
+import { getErrorMessage, getRejectionMessage } from '../../../services/errorMessages';
 
-const statusLabel = { ACTIVE: 'Activo', PAUSED: 'Pausado', STOPPED: 'Detenido', ERROR: 'Error' } as const;
-const statusTone = { ACTIVE: colors.success, PAUSED: colors.textMuted, STOPPED: colors.textMuted, ERROR: colors.danger } as const;
-const assetClassLabel = { CRYPTO: 'Crypto', EQUITY: 'Equity', TOKENIZED_EQUITY: 'Tokenized Equity' } as const;
-const venueLabel = { BINANCE: 'Binance' } as const;
-const strategyLabel = {
-  SIGNAL_BASED: 'Signal based',
-  REGIME_BASED: 'Regime based',
-  GARCH: 'GARCH',
-  MONTE_CARLO: 'Monte Carlo',
+const statusLabel = {
+  ACTIVE: 'Activo',
+  PAUSING: 'Pausando…',
+  PAUSED: 'Pausado',
+  RESUMING: 'Reanudando…',
+  STOPPED: 'Detenido',
+  ERROR: 'Error',
 } as const;
+const statusTone = {
+  ACTIVE: colors.success,
+  PAUSING: colors.warning,
+  PAUSED: colors.textMuted,
+  RESUMING: colors.warning,
+  STOPPED: colors.textMuted,
+  ERROR: colors.danger,
+} as const;
+const assetClassLabel = { CRYPTO: 'Crypto', EQUITY: 'Equity' } as const;
+const venueLabel = { BINANCE: 'Binance' } as const;
+
+type Action = 'pause' | 'resume' | 'stop';
 
 export default function BotDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { bots, activityEvents, signals, risk, setBotLifecycleStatus } = useHermesData();
-  const [stopConfirmVisible, setStopConfirmVisible] = useState(false);
-  const [closePositionsConfirmVisible, setClosePositionsConfirmVisible] = useState(false);
-  const [closePositionsPending, setClosePositionsPending] = useState(false);
+  const { bots, pauseBot, resumeBot, stopBot } = useHermesData();
+
+  const [confirmAction, setConfirmAction] = useState<Action | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  // One key per action, held for the screen's lifetime — a retry of the
+  // same confirm dialog reuses it; see services/idempotency.ts.
+  const [pauseKey, setPauseKey] = useState(() => generateIdempotencyKey());
+  const [resumeKey, setResumeKey] = useState(() => generateIdempotencyKey());
+  const [stopKey, setStopKey] = useState(() => generateIdempotencyKey());
 
   const bot = bots.find((b) => b.id === id);
 
@@ -48,29 +59,60 @@ export default function BotDetailScreen() {
     );
   }
 
-  const botId = bot.id as BotId;
-  const accent = botColors[botId];
-  const botEvents = activityEvents.filter((e) => e.botId === botId);
-  const botSignals = signals.filter((s) => s.botId === botId);
-  const riskLevel = risk.riskByBot[botId];
   const isLive = bot.status === 'ACTIVE' || bot.status === 'PAUSED';
+  const canEdit = bot.status === 'PAUSED';
+  const canStop = bot.status === 'ACTIVE' || bot.status === 'PAUSED' || bot.status === 'ERROR';
+
+  const runAction = async (action: Action) => {
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      let result;
+      if (action === 'pause') {
+        result = await pauseBot(bot.id, pauseKey);
+      } else if (action === 'resume') {
+        result = await resumeBot(bot.id, resumeKey);
+      } else {
+        result = await stopBot(bot.id, stopKey);
+      }
+
+      if (result.status === 'REJECTED') {
+        setSubmitError(getRejectionMessage(result.reason));
+      } else if (result.status === 'ERROR') {
+        setSubmitError(
+          `${getRejectionMessage(result.reason)} El estado del bot requiere revisión manual — solo se permite Detener desde aquí.`
+        );
+      } else {
+        setConfirmAction(null);
+        // A fresh attempt (if the user triggers this action again later)
+        // is a new logical action, so it gets a new key.
+        if (action === 'pause') setPauseKey(generateIdempotencyKey());
+        if (action === 'resume') setResumeKey(generateIdempotencyKey());
+        if (action === 'stop') setStopKey(generateIdempotencyKey());
+      }
+    } catch (error) {
+      setSubmitError(getErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const confirmLabelFor = (action: Action) => {
+    if (!isSubmitting) {
+      return action === 'pause' ? 'Pause Bot' : action === 'resume' ? 'Resume Bot' : 'Detener';
+    }
+    return action === 'pause' ? 'Closing position…' : action === 'resume' ? 'Opening position…' : 'Deteniendo…';
+  };
 
   return (
     <DetailDrawer title={bot.name} onClose={() => router.back()}>
       <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.xxl }}>
-        <PreviewBanner
-          variant="preview"
-          label="Vista previa — Bot API pendiente de backend"
-          description="Los cambios de estado no se persisten y se reinician al recargar."
-        />
-
         <Section title="Header">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-            <BotGlyph botId={botId} size={44} active={bot.status === 'ACTIVE'} />
             <View style={{ flex: 1 }}>
               <Text variant="heading">{bot.name}</Text>
               <Text variant="body" color="muted">
-                {bot.profile}
+                {bot.riskProfile}
               </Text>
             </View>
             <Badge label={statusLabel[bot.status]} tone={statusTone[bot.status]} />
@@ -79,35 +121,30 @@ export default function BotDetailScreen() {
           <View style={{ flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' }}>
             {isLive ? (
               <Button
-                label={bot.status === 'PAUSED' ? 'Reanudar' : 'Pausar'}
+                label={bot.status === 'PAUSED' ? 'Resume Bot' : 'Pause Bot'}
                 variant="secondary"
-                onPress={() => setBotLifecycleStatus(botId, bot.status === 'PAUSED' ? 'ACTIVE' : 'PAUSED')}
+                onPress={() => setConfirmAction(bot.status === 'PAUSED' ? 'resume' : 'pause')}
                 style={{ flex: 1 }}
               />
             ) : null}
-            {isLive ? (
-              <Button label="Detener" variant="danger" onPress={() => setStopConfirmVisible(true)} style={{ flex: 1 }} />
+            {canEdit ? (
+              <Button
+                label="Editar"
+                variant="secondary"
+                onPress={() => router.push(`/bots/form?id=${bot.id}` as any)}
+                style={{ flex: 1 }}
+              />
             ) : null}
-            <Button
-              label="Editar"
-              variant="secondary"
-              onPress={() => router.push(`/bots/form?id=${botId}` as any)}
-              style={{ flex: 1 }}
-            />
           </View>
 
-          <Button
-            label="Cerrar posiciones"
-            variant="danger"
-            onPress={() => setClosePositionsConfirmVisible(true)}
-            fullWidth
-          />
-          {closePositionsPending ? (
-            <PreviewBanner
-              variant="pending"
-              label="Integración con backend pendiente"
-              description="Cerrar posiciones por bot requiere asociar posiciones reales a un bot en el backend — todavía no existe esa relación."
-            />
+          {canStop ? (
+            <Button label="Detener" variant="danger" onPress={() => setConfirmAction('stop')} fullWidth />
+          ) : null}
+
+          {submitError ? (
+            <Text variant="body" style={{ color: colors.danger }}>
+              {submitError}
+            </Text>
           ) : null}
         </Section>
 
@@ -127,109 +164,84 @@ export default function BotDetailScreen() {
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Text variant="body" color="muted">
+                Instrument
+              </Text>
+              <Text variant="body">{bot.instrument}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text variant="body" color="muted">
                 Strategy / Model
               </Text>
-              <Text variant="body">{strategyLabel[bot.strategyModel]}</Text>
-            </View>
-          </Card>
-        </Section>
-
-        <Section title="Performance">
-          <Card style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <View>
-              <Text variant="caption" color="muted">
-                Retorno
-              </Text>
-              <Text variant="heading" numeric style={{ color: bot.returnPct >= 0 ? colors.success : colors.danger }}>
-                {formatPercent(bot.returnPct, { signed: true })}
-              </Text>
+              <Text variant="body">{bot.strategyModel ?? 'Sin definir'}</Text>
             </View>
           </Card>
         </Section>
 
         <Section title="Exposure">
-          <Card>
-            <ExposureBar pct={bot.exposure.pct} limitPct={bot.exposure.limitPct} color={accent} />
-          </Card>
-        </Section>
-
-        <Section title="Risk">
-          <Card style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text variant="body" color="secondary">
-              Estado de riesgo de {bot.name}
-            </Text>
-            <RiskStateBadge level={riskLevel} />
-          </Card>
-        </Section>
-
-        <Section title="Strategy">
-          <Card>
-            <Text variant="body" color="secondary">
-              {bot.strategyDescription}
-            </Text>
-          </Card>
-        </Section>
-
-        <Section title="Activity">
-          {botEvents.length === 0 ? (
-            <EmptyState title="Sin actividad reciente para este bot." />
-          ) : (
-            <View style={{ gap: spacing.sm }}>
-              {botEvents.map((event) => (
-                <View key={event.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md }}>
-                  <Text variant="body" color="secondary" style={{ flex: 1 }}>
-                    {event.description}
-                  </Text>
-                  <Text variant="caption" color="muted">
-                    {formatRelativeTime(event.timestamp)}
-                  </Text>
-                </View>
-              ))}
+          <Card style={{ gap: spacing.sm }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text variant="body" color="muted">
+                Cantidad actual
+              </Text>
+              <Text variant="body" numeric>
+                {bot.currentQuantity} {bot.instrument}
+              </Text>
             </View>
-          )}
-        </Section>
-
-        <Section title="Signals">
-          {botSignals.length === 0 ? (
-            <EmptyState title="Hermes aún no tiene nada que interpretar." />
-          ) : (
-            <View style={{ gap: spacing.md }}>
-              {botSignals.map((signal) => (
-                <SignalCard
-                  key={signal.id}
-                  signal={signal}
-                  relatedEvents={activityEvents.filter((e) => signal.relatedEventIds.includes(e.id))}
-                />
-              ))}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text variant="body" color="muted">
+                Cantidad objetivo
+              </Text>
+              <Text variant="body" numeric color="secondary">
+                {bot.targetQuantity} {bot.instrument}
+              </Text>
             </View>
-          )}
+            {bot.pausedAt ? (
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text variant="body" color="muted">
+                  Pausado desde
+                </Text>
+                <Text variant="body" color="secondary">
+                  {new Date(bot.pausedAt).toLocaleString()}
+                </Text>
+              </View>
+            ) : null}
+          </Card>
         </Section>
       </ScrollView>
 
       <ConfirmDialog
-        visible={stopConfirmVisible}
-        title="Detener bot"
-        description={`Vas a detener ${bot.name}. Un bot detenido no puede reanudarse desde aquí.`}
-        confirmLabel="Detener"
+        visible={confirmAction === 'pause'}
+        title="Pause Bot"
+        description="Pausing this bot will close its current position. The bot will save its current target exposure and can restore it when resumed."
+        confirmLabel={confirmLabelFor('pause')}
         destructive
         onConfirm={() => {
-          setBotLifecycleStatus(botId, 'STOPPED');
-          setStopConfirmVisible(false);
+          if (!isSubmitting) void runAction('pause');
         }}
-        onCancel={() => setStopConfirmVisible(false)}
+        onCancel={() => setConfirmAction(null)}
       />
 
       <ConfirmDialog
-        visible={closePositionsConfirmVisible}
-        title="Cerrar posiciones"
-        description={`Vas a cerrar todas las posiciones de ${bot.name}. Esta acción no se puede deshacer.`}
-        confirmLabel="Cerrar posiciones"
+        visible={confirmAction === 'resume'}
+        title="Resume Bot"
+        description="Resuming this bot will open a new position using the target exposure saved when the bot was paused."
+        confirmLabel={confirmLabelFor('resume')}
+        onConfirm={() => {
+          if (!isSubmitting) void runAction('resume');
+        }}
+        onCancel={() => setConfirmAction(null)}
+      />
+
+      <ConfirmDialog
+        visible={confirmAction === 'stop'}
+        title="Detener bot"
+        description={`Vas a detener ${bot.name} de forma PERMANENTE. Un bot detenido no puede reanudarse. Si tiene una posición abierta, seguirá abierta — deberás cerrarla manualmente desde Trading.`}
+        confirmLabel={confirmLabelFor('stop')}
         destructive
         onConfirm={() => {
-          setClosePositionsConfirmVisible(false);
-          setClosePositionsPending(true);
+          if (!isSubmitting) void runAction('stop');
         }}
-        onCancel={() => setClosePositionsConfirmVisible(false)}
+        onCancel={() => setConfirmAction(null)}
       />
     </DetailDrawer>
   );
