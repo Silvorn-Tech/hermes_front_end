@@ -24,6 +24,8 @@ import {
   AssetClass,
   Balance,
   Bot,
+  EquityCurve,
+  EquityPeriod,
   ExecutionVenue,
   Order,
   OrderSide,
@@ -136,6 +138,24 @@ interface WirePortfolio {
   total_value_quote: string;
   as_of: string;
   balances: WireBalance[];
+}
+
+interface WireEquityPoint {
+  t: string;
+  v: string;
+}
+
+/** GET /portfolio/history's backend period values — a different set from
+ * the UI's own `EquityPeriod` tab keys (`7D/1M/3M/1Y`); see
+ * `BACKEND_PERIOD_BY_UI_PERIOD` for the mapping between the two. */
+type BackendPortfolioHistoryPeriod = '1D' | '7D' | '30D' | '90D' | '1Y';
+
+interface WireEquityCurve {
+  period: BackendPortfolioHistoryPeriod;
+  quote_asset: string;
+  points: WireEquityPoint[];
+  return_pct: string | null;
+  max_drawdown_pct: string | null;
 }
 
 interface WirePosition {
@@ -287,7 +307,23 @@ function mapPortfolio(wire: WirePortfolio): Portfolio {
     balances: wire.balances.map(mapBalance),
     dailyPnl: null,
     dailyPnlPct: null,
-    equityCurves: null,
+  };
+}
+
+/** The Dashboard's existing 4 period tabs, unchanged (no design change),
+ * mapped to the 5 periods `GET /portfolio/history` actually supports. */
+const BACKEND_PERIOD_BY_UI_PERIOD: Record<EquityPeriod, BackendPortfolioHistoryPeriod> = {
+  '7D': '7D',
+  '1M': '30D',
+  '3M': '90D',
+  '1Y': '1Y',
+};
+
+function mapEquityCurve(wire: WireEquityCurve): EquityCurve {
+  return {
+    points: wire.points.map((p) => ({ t: p.t, v: toNumber(p.v) })),
+    returnPct: toNullableNumber(wire.return_pct),
+    maxDrawdownPct: toNullableNumber(wire.max_drawdown_pct),
   };
 }
 
@@ -373,6 +409,7 @@ function mapBotActionResult(wire: WireBotActionResult): BotActionResult {
 
 export interface HermesApiClient {
   getPortfolio(): Promise<Portfolio>;
+  getPortfolioHistory(period: EquityPeriod): Promise<EquityCurve>;
   getBalances(): Promise<Balance[]>;
   getMarketData(symbol: string): Promise<MarketData>;
   getPositions(): Promise<Position[]>;
@@ -394,6 +431,13 @@ class HermesApiClientImpl implements HermesApiClient {
   async getPortfolio(): Promise<Portfolio> {
     const wire = await request<WirePortfolio>('/portfolio');
     return mapPortfolio(wire);
+  }
+
+  async getPortfolioHistory(period: EquityPeriod): Promise<EquityCurve> {
+    const wire = await request<WireEquityCurve>('/portfolio/history', {
+      query: { period: BACKEND_PERIOD_BY_UI_PERIOD[period] },
+    });
+    return mapEquityCurve(wire);
   }
 
   async getBalances(): Promise<Balance[]> {
