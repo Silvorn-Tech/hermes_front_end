@@ -417,7 +417,7 @@ export default function BotFormScreen() {
                 icon={<BotGlyph riskProfile={opt.value} size={28} />}
                 selected={riskProfile === opt.value}
                 onPress={() => setRiskProfile(opt.value)}
-                style={{ flexBasis: '100%' }}
+                style={{ flexGrow: 0, flexBasis: 'auto', width: '100%' }}
               />
             ))}
           </View>
