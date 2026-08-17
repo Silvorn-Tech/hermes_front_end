@@ -98,7 +98,7 @@ describe('Settings — personal trading switch', () => {
 
     const { getByText, getByRole } = await render(<SettingsScreen />);
 
-    expect(getByText('Mi interruptor personal')).toBeTruthy();
+    expect(getByText('Mi trading')).toBeTruthy();
     await waitFor(() => expect(getByRole('switch').props.value).toBe(true));
   });
 

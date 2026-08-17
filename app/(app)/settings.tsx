@@ -107,10 +107,12 @@ function TradingSafetySection() {
       <Card style={{ gap: spacing.sm }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flex: 1, paddingRight: spacing.md }}>
-            <Text variant="body">Mi interruptor personal</Text>
+            <Text variant="body">Mi trading</Text>
             <Text variant="caption" color="muted">
-              Pausa tus propias órdenes reales y fills de Simulación sin afectar a otros usuarios. Ambos
-              interruptores (el global y este) deben estar activos para operar.
+              Activa o pausa que tus bots operen — tanto con dinero real como en Simulación. Solo te afecta a
+              vos, no a otros usuarios. Para que tus bots operen hacen falta dos interruptores activos: este
+              (el tuyo) y el interruptor global del servidor, que solo puede cambiar un operador desde la
+              configuración del backend.
             </Text>
           </View>
           {switchStatus === 'loading' ? (
