@@ -62,7 +62,7 @@ function baseUrl(): string {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   query?: Record<string, string | undefined>;
   body?: unknown;
   idempotencyKey?: string;
@@ -532,6 +532,7 @@ export interface HermesApiClient {
   pauseBot(id: string, idempotencyKey: string): Promise<BotActionResult>;
   resumeBot(id: string, idempotencyKey: string): Promise<BotActionResult>;
   stopBot(id: string, idempotencyKey: string): Promise<BotActionResult>;
+  deleteBot(id: string, idempotencyKey: string): Promise<BotActionResult>;
 }
 
 class HermesApiClientImpl implements HermesApiClient {
@@ -689,6 +690,14 @@ class HermesApiClientImpl implements HermesApiClient {
   async stopBot(id: string, idempotencyKey: string): Promise<BotActionResult> {
     const wire = await request<WireBotActionResult>(`/bots/${encodeURIComponent(id)}/stop`, {
       method: 'POST',
+      idempotencyKey,
+    });
+    return mapBotActionResult(wire);
+  }
+
+  async deleteBot(id: string, idempotencyKey: string): Promise<BotActionResult> {
+    const wire = await request<WireBotActionResult>(`/bots/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
       idempotencyKey,
     });
     return mapBotActionResult(wire);

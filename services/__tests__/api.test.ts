@@ -320,6 +320,18 @@ describe('HermesApiClient — every call uses the session cookie, never a bearer
     expect(options.method).toBe('POST');
     expect(options.headers['Idempotency-Key']).toBe('key-3');
   });
+
+  it('deleteBot issues a DELETE to /bots/{id} with the idempotency key', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, { bot: null, status: 'DELETED', reason: null })
+    );
+    const result = await apiClient.deleteBot('bot-1', 'key-4');
+    const [url, options] = lastCall();
+    expect(url).toBe('https://hermes.test/bots/bot-1');
+    expect(options.method).toBe('DELETE');
+    expect(options.headers['Idempotency-Key']).toBe('key-4');
+    expect(result).toEqual({ bot: null, status: 'DELETED', reason: null });
+  });
 });
 
 describe('HermesApiClient — Simulation Mode', () => {
