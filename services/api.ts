@@ -287,6 +287,29 @@ interface WireMarketData {
   volume: string;
 }
 
+/** Quantity/price precision rules for one symbol -- lets a caller round a
+ * quantity to a valid step (e.g. the bot-form budget calculator) before
+ * submitting an order, rather than only finding out from a rejected one. */
+export interface ExchangeInfo {
+  symbol: string;
+  status: string;
+  stepSize: number;
+  minQty: number;
+  maxQty: number;
+  minNotional: number;
+}
+
+interface WireExchangeInfo {
+  symbol: string;
+  status: string;
+  filters: {
+    step_size: string;
+    min_qty: string;
+    max_qty: string;
+    min_notional: string;
+  };
+}
+
 export interface OrderActionResult {
   order: Order | null;
   status: string;
@@ -459,6 +482,17 @@ function mapMarketData(wire: WireMarketData): MarketData {
   };
 }
 
+function mapExchangeInfo(wire: WireExchangeInfo): ExchangeInfo {
+  return {
+    symbol: wire.symbol,
+    status: wire.status,
+    stepSize: toNumber(wire.filters.step_size),
+    minQty: toNumber(wire.filters.min_qty),
+    maxQty: toNumber(wire.filters.max_qty),
+    minNotional: toNumber(wire.filters.min_notional),
+  };
+}
+
 function mapOrderActionResult(wire: WireOrderActionResult): OrderActionResult {
   return {
     order: wire.order ? mapOrder(wire.order) : null,
@@ -582,6 +616,7 @@ export interface HermesApiClient {
   getPortfolioHistory(period: EquityPeriod): Promise<EquityCurve>;
   getBalances(): Promise<Balance[]>;
   getMarketData(symbol: string): Promise<MarketData>;
+  getExchangeInfo(symbol: string): Promise<ExchangeInfo>;
   getPositions(): Promise<Position[]>;
   getOrders(params?: { symbol?: string; status?: string }): Promise<{ orders: Order[]; count: number }>;
   getOrder(id: string): Promise<Order>;
@@ -632,6 +667,11 @@ class HermesApiClientImpl implements HermesApiClient {
   async getMarketData(symbol: string): Promise<MarketData> {
     const wire = await request<WireMarketData>('/market-data', { query: { symbol } });
     return mapMarketData(wire);
+  }
+
+  async getExchangeInfo(symbol: string): Promise<ExchangeInfo> {
+    const wire = await request<WireExchangeInfo>('/exchange-info', { query: { symbol } });
+    return mapExchangeInfo(wire);
   }
 
   async getPositions(): Promise<Position[]> {

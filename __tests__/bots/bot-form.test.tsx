@@ -21,7 +21,7 @@ jest.mock('../../services/api', () => {
   const actual = jest.requireActual('../../services/api');
   return {
     ...actual,
-    apiClient: { getMarketData: jest.fn(), getSimulationConfig: jest.fn() },
+    apiClient: { getMarketData: jest.fn(), getExchangeInfo: jest.fn(), getSimulationConfig: jest.fn() },
   };
 });
 
@@ -80,6 +80,14 @@ beforeEach(() => {
     highPrice: 0,
     lowPrice: 0,
     volume: 0,
+  });
+  mockApiClient.getExchangeInfo.mockResolvedValue({
+    symbol: 'BTCUSDT',
+    status: 'TRADING',
+    stepSize: 0.00001,
+    minQty: 0.00001,
+    maxQty: 100,
+    minNotional: 10,
   });
   mockApiClient.getSimulationConfig.mockResolvedValue({ initialCapitalQuote: 10000, quoteAsset: 'USDT' });
   mockContext();
@@ -227,6 +235,41 @@ describe('Bot create form — matches the approved prototype, wired to the real 
 
     // 50% of the $10,000 simulation capital / 50000 = 0.1 BTC.
     await waitFor(() => expect(getByText(/≈ 0.1 BTC/)).toBeTruthy());
+  });
+
+  it('rounds the budget-computed quantity down to the instrument step size, never a raw division result', async () => {
+    // 20% (default) of $10,000 / 33333 = 0.060000600006... -- not a
+    // multiple of 0.0001, and Binance (and hermes_v2's resume path) would
+    // reject that exact quantity with "does not match step size". This is
+    // the class of bug a live user hit: a bot's Resume failed because its
+    // budget-computed target_quantity was never rounded to a valid step.
+    mockApiClient.getMarketData.mockResolvedValue({
+      symbol: 'BTCUSDT',
+      lastPrice: 33333,
+      priceChangePercent: 0,
+      highPrice: 0,
+      lowPrice: 0,
+      volume: 0,
+    });
+    mockApiClient.getExchangeInfo.mockResolvedValue({
+      symbol: 'BTCUSDT',
+      status: 'TRADING',
+      stepSize: 0.0001,
+      minQty: 0.0001,
+      maxQty: 100,
+      minNotional: 10,
+    });
+
+    const { getByPlaceholderText, getByText } = await render(<BotFormScreen />);
+    await fireEvent.changeText(getByPlaceholderText('Ej. Mi estrategia BTC'), 'My Crypto Bot');
+    await fireEvent.changeText(getByPlaceholderText('BTCUSDT'), 'btcusdt');
+    await waitFor(() => expect(getByText(/≈ 0.06 BTC/)).toBeTruthy(), { timeout: 2000 });
+
+    await fireEvent.press(getByText('Crear bot'));
+
+    await waitFor(() => expect(createBot).toHaveBeenCalledTimes(1));
+    const [payload] = createBot.mock.calls[0];
+    expect(payload.targetQuantity).toBe('0.06');
   });
 
   it('falls back to a direct quantity input when the simulation config is unavailable', async () => {

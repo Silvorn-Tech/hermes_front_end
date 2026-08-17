@@ -106,6 +106,22 @@ function computeQuantityFromBudget(pct: number, availableBudget: number, price: 
   return (pct / 100) * availableBudget / price;
 }
 
+/** Binance rejects (and Resume later fails on) any quantity that isn't an
+ * exact multiple of the symbol's LOT_SIZE step — a budget/price division
+ * essentially never lands on one by chance, so this must run on every
+ * computed quantity before it's shown or submitted. `stepSize` is `null`
+ * only while it hasn't loaded yet or the lookup failed; the raw quantity
+ * passes through unrounded in that case rather than being blocked. */
+function roundDownToStep(quantity: number, stepSize: number | null): number {
+  if (!stepSize || stepSize <= 0) return quantity;
+  // +1e-9 guards against float division landing just under an exact step
+  // multiple (e.g. 0.04 / 0.00001 evaluating to 3999.9999999999995 instead
+  // of 4000) rounding down one whole step too far. Negligible next to any
+  // step size this domain actually uses (>= 1e-8, Binance's own precision
+  // floor), so it never masks a genuinely non-aligned quantity.
+  return Math.floor(quantity / stepSize + 1e-9) * stepSize;
+}
+
 function formatQuantityForSubmit(qty: number): string {
   if (!Number.isFinite(qty) || qty <= 0) return '';
   return qty.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
@@ -145,6 +161,7 @@ export default function BotFormScreen() {
   const [targetQuantity, setTargetQuantity] = useState(existingBot ? String(existingBot.targetQuantity) : '');
   const [budgetPct, setBudgetPct] = useState(DEFAULT_BUDGET_PCT);
   const [marketPrice, setMarketPrice] = useState<number | null>(null);
+  const [stepSize, setStepSize] = useState<number | null>(null);
   const [priceLoading, setPriceLoading] = useState(false);
   const [priceError, setPriceError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
@@ -195,6 +212,7 @@ export default function BotFormScreen() {
 
   useEffect(() => {
     setMarketPrice(null);
+    setStepSize(null);
     setPriceError(null);
     if (!useLiveBudgetCalculator || !instrumentValid) return;
 
@@ -202,8 +220,14 @@ export default function BotFormScreen() {
     const timer = setTimeout(async () => {
       setPriceLoading(true);
       try {
-        const data = await apiClient.getMarketData(trimmedInstrument);
-        if (!cancelled) setMarketPrice(data.lastPrice);
+        const [priceData, exchangeInfo] = await Promise.all([
+          apiClient.getMarketData(trimmedInstrument),
+          apiClient.getExchangeInfo(trimmedInstrument),
+        ]);
+        if (!cancelled) {
+          setMarketPrice(priceData.lastPrice);
+          setStepSize(exchangeInfo.stepSize > 0 ? exchangeInfo.stepSize : null);
+        }
       } catch (error) {
         if (!cancelled) setPriceError(getErrorMessage(error));
       } finally {
@@ -219,7 +243,7 @@ export default function BotFormScreen() {
 
   const computedQuantity =
     useLiveBudgetCalculator && marketPrice
-      ? computeQuantityFromBudget(budgetPct, availableBudget as number, marketPrice)
+      ? roundDownToStep(computeQuantityFromBudget(budgetPct, availableBudget as number, marketPrice), stepSize)
       : null;
   const computedQuantityStr = computedQuantity !== null ? formatQuantityForSubmit(computedQuantity) : '';
 
