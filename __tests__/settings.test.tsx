@@ -21,6 +21,8 @@ jest.mock('../services/api', () => {
       disconnectBinanceCredentials: jest.fn(),
       getUserRiskLimits: jest.fn(),
       updateUserRiskLimits: jest.fn(),
+      getSimulationRiskLimits: jest.fn(),
+      updateSimulationRiskLimits: jest.fn(),
     },
   };
 });
@@ -35,6 +37,15 @@ const DEFAULT_RISK_LIMITS = {
   maxDailyLossPct: null,
   maxOpenPositions: null,
   allowedSymbols: null,
+};
+
+const DEFAULT_SIMULATION_RISK_LIMITS = {
+  maxOrderNotionalQuote: 1000,
+  maxSymbolExposurePct: 50,
+  maxTotalExposurePct: 100,
+  maxDailyLossPct: 20,
+  maxOpenPositions: 5,
+  allowedSymbols: ['BTCUSDT', 'ETHUSDT'],
 };
 
 beforeEach(() => {
@@ -52,6 +63,7 @@ beforeEach(() => {
     updatedAt: null,
   });
   mockApiClient.getUserRiskLimits.mockResolvedValue({ ...DEFAULT_RISK_LIMITS });
+  mockApiClient.getSimulationRiskLimits.mockResolvedValue({ ...DEFAULT_SIMULATION_RISK_LIMITS });
 });
 
 describe('Settings — Trading Safety', () => {
@@ -217,9 +229,12 @@ describe('Settings — risk limits', () => {
   it('loads the current limits, showing empty fields when nothing is configured', async () => {
     mockApiClient.getUserRiskLimits.mockResolvedValue({ ...DEFAULT_RISK_LIMITS });
 
-    const { getByText, getByPlaceholderText } = await render(<SettingsScreen />);
+    const { getAllByText, getByPlaceholderText } = await render(<SettingsScreen />);
 
-    await waitFor(() => expect(getByText('Guardar')).toBeTruthy());
+    // Two "Guardar" buttons now exist (real-order limits + Simulation
+    // limits, each its own section) -- this section is real-order limits,
+    // identified by its own placeholder ("Ej. 5000" is unique to it).
+    await waitFor(() => expect(getAllByText('Guardar').length).toBe(2));
     expect(getByPlaceholderText('Ej. 5000').props.value).toBe('');
   });
 
@@ -231,14 +246,14 @@ describe('Settings — risk limits', () => {
       allowedSymbols: ['BTCUSDT', 'ETHUSDT'],
     });
 
-    const { getByText, getByPlaceholderText, getByDisplayValue } = await render(<SettingsScreen />);
-    await waitFor(() => expect(getByText('Guardar')).toBeTruthy());
+    const { getAllByText, getByPlaceholderText, getByDisplayValue } = await render(<SettingsScreen />);
+    await waitFor(() => expect(getAllByText('Guardar').length).toBe(2));
 
     await fireEvent.changeText(getByPlaceholderText('Ej. 5000'), '5000');
-    await fireEvent.press(getByText('Guardar'));
+    await fireEvent.press(getAllByText('Guardar')[0]);
 
     await waitFor(() => expect(mockApiClient.updateUserRiskLimits).toHaveBeenCalled());
-    await waitFor(() => expect(getByText('Guardado.')).toBeTruthy());
+    await waitFor(() => expect(getAllByText('Guardado.').length).toBeGreaterThan(0));
     expect(getByDisplayValue('5000')).toBeTruthy();
   });
 
@@ -246,10 +261,59 @@ describe('Settings — risk limits', () => {
     mockApiClient.getUserRiskLimits.mockResolvedValue({ ...DEFAULT_RISK_LIMITS });
     mockApiClient.updateUserRiskLimits.mockRejectedValue(new HermesApiError(422, 'must be greater than 0'));
 
-    const { getByText } = await render(<SettingsScreen />);
-    await waitFor(() => expect(getByText('Guardar')).toBeTruthy());
+    const { getAllByText, getByText } = await render(<SettingsScreen />);
+    await waitFor(() => expect(getAllByText('Guardar').length).toBe(2));
 
-    await fireEvent.press(getByText('Guardar'));
+    await fireEvent.press(getAllByText('Guardar')[0]);
+
+    await waitFor(() => expect(getByText('must be greater than 0')).toBeTruthy());
+  });
+});
+
+describe('Settings — Simulation risk limits', () => {
+  it('loads pre-filled with sensible defaults, never blank', async () => {
+    const { getByPlaceholderText } = await render(<SettingsScreen />);
+
+    await waitFor(() => expect(getByPlaceholderText('Ej. 1000').props.value).toBe('1000'));
+    expect(getByPlaceholderText('Ej. 50').props.value).toBe('50');
+    expect(getByPlaceholderText('Ej. BTCUSDT, ETHUSDT').props.value).toBe('BTCUSDT, ETHUSDT');
+  });
+
+  it('saves the edited limits and reflects the persisted values', async () => {
+    mockApiClient.updateSimulationRiskLimits.mockResolvedValue({
+      ...DEFAULT_SIMULATION_RISK_LIMITS,
+      maxOrderNotionalQuote: 2000,
+    });
+
+    const { getAllByText, getByPlaceholderText, getByDisplayValue } = await render(<SettingsScreen />);
+    await waitFor(() => expect(getByPlaceholderText('Ej. 1000').props.value).toBe('1000'));
+
+    await fireEvent.changeText(getByPlaceholderText('Ej. 1000'), '2000');
+    await fireEvent.press(getAllByText('Guardar')[1]);
+
+    await waitFor(() => expect(mockApiClient.updateSimulationRiskLimits).toHaveBeenCalled());
+    expect(getByDisplayValue('2000')).toBeTruthy();
+  });
+
+  it('pressing Guardar with a required field cleared never calls the API -- unlike real limits, empty is never valid here', async () => {
+    const { getAllByText, getByPlaceholderText } = await render(<SettingsScreen />);
+    await waitFor(() => expect(getByPlaceholderText('Ej. BTCUSDT, ETHUSDT').props.value).toBe('BTCUSDT, ETHUSDT'));
+
+    await fireEvent.changeText(getByPlaceholderText('Ej. BTCUSDT, ETHUSDT'), '');
+    await fireEvent.press(getAllByText('Guardar')[1]);
+
+    expect(mockApiClient.updateSimulationRiskLimits).not.toHaveBeenCalled();
+  });
+
+  it('shows an inline error, never a thrown crash, when saving fails', async () => {
+    mockApiClient.updateSimulationRiskLimits.mockRejectedValue(
+      new HermesApiError(422, 'must be greater than 0')
+    );
+
+    const { getAllByText, getByText, getByPlaceholderText } = await render(<SettingsScreen />);
+    await waitFor(() => expect(getByPlaceholderText('Ej. 1000').props.value).toBe('1000'));
+
+    await fireEvent.press(getAllByText('Guardar')[1]);
 
     await waitFor(() => expect(getByText('must be greater than 0')).toBeTruthy());
   });

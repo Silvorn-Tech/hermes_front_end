@@ -39,6 +39,21 @@ export interface UserRiskLimits {
   allowedSymbols: string[] | null;
 }
 
+/** Mirrors hermes_v2's Simulation `RiskLimits` — same six fields as
+ * `UserRiskLimits`, but never `null`: a Simulation limit can only be
+ * changed, never "un-configured," so every user's bots work with
+ * sensible defaults from the start (see hermes_v2's
+ * `user_risk_settings_service.py`). `allowedSymbols` must have at least
+ * one entry. */
+export interface SimulationRiskLimits {
+  maxOrderNotionalQuote: number;
+  maxSymbolExposurePct: number;
+  maxTotalExposurePct: number;
+  maxDailyLossPct: number;
+  maxOpenPositions: number;
+  allowedSymbols: string[];
+}
+
 export interface TradingSwitchState {
   enabled: boolean;
 }
