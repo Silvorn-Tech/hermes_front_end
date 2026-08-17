@@ -31,6 +31,7 @@ const baseValue = {
   status: 'ready',
   positions: [],
   positionsError: null,
+  binanceNotConnected: false,
   bots: [],
   signals: [],
   refresh: jest.fn(),
@@ -56,5 +57,13 @@ describe('Dashboard — fetch failures must be visible, never silently swallowed
     const { getByText } = await render(<DashboardScreen />);
     expect(getByText('No se pudieron cargar las posiciones.')).toBeTruthy();
     expect(getByText('network down')).toBeTruthy();
+  });
+
+  it('shows a "connect your account" prompt, never a generic error, when Binance is not connected', async () => {
+    mockUseHermesData.mockReturnValue({ ...baseValue, binanceNotConnected: true, positionsError: null });
+    const { getByText, queryByText } = await render(<DashboardScreen />);
+    expect(getByText('Conectá tu cuenta de Binance')).toBeTruthy();
+    expect(getByText('Ir a Settings')).toBeTruthy();
+    expect(queryByText('No se pudieron cargar las posiciones.')).toBeNull();
   });
 });

@@ -23,9 +23,11 @@
 import {
   AssetClass,
   Balance,
+  BinanceCredentialStatus,
   Bot,
   BotPerformance,
   BotPortfolio,
+  ConnectBinanceCredentialsResult,
   EquityCurve,
   EquityPeriod,
   ExecutionMode,
@@ -37,6 +39,8 @@ import {
   Position,
   RiskProfile,
   SimulationConfig,
+  TradingSwitchState,
+  UserRiskLimits,
 } from '../types';
 
 export class HermesApiError extends Error {
@@ -62,7 +66,7 @@ function baseUrl(): string {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   query?: Record<string, string | undefined>;
   body?: unknown;
   idempotencyKey?: string;
@@ -307,6 +311,30 @@ interface WireBotActionResult {
   reason: string | null;
 }
 
+interface WireBinanceCredentialStatus {
+  configured: boolean;
+  api_key_last4: string | null;
+  verified_at: string | null;
+  updated_at: string | null;
+}
+
+type WireConnectBinanceCredentialsResult =
+  | { connected: true; api_key_last4: string; verified_at: string | null }
+  | { connected: false; reason: string };
+
+interface WireUserRiskLimits {
+  max_order_notional_quote: string | null;
+  max_symbol_exposure_pct: string | null;
+  max_total_exposure_pct: string | null;
+  max_daily_loss_pct: string | null;
+  max_open_positions: number | null;
+  allowed_symbols: string[] | null;
+}
+
+interface WireTradingSwitchState {
+  enabled: boolean;
+}
+
 export interface CreateBotRequest {
   name: string;
   riskProfile: RiskProfile;
@@ -509,6 +537,44 @@ function mapBotActionResult(wire: WireBotActionResult): BotActionResult {
   };
 }
 
+function mapBinanceCredentialStatus(wire: WireBinanceCredentialStatus): BinanceCredentialStatus {
+  return {
+    configured: wire.configured,
+    apiKeyLast4: wire.api_key_last4,
+    verifiedAt: wire.verified_at,
+    updatedAt: wire.updated_at,
+  };
+}
+
+function mapConnectBinanceCredentialsResult(
+  wire: WireConnectBinanceCredentialsResult
+): ConnectBinanceCredentialsResult {
+  if (!wire.connected) {
+    return { connected: false, reason: wire.reason };
+  }
+  return { connected: true, apiKeyLast4: wire.api_key_last4, verifiedAt: wire.verified_at };
+}
+
+function mapUserRiskLimits(wire: WireUserRiskLimits): UserRiskLimits {
+  return {
+    maxOrderNotionalQuote: toNullableNumber(wire.max_order_notional_quote),
+    maxSymbolExposurePct: toNullableNumber(wire.max_symbol_exposure_pct),
+    maxTotalExposurePct: toNullableNumber(wire.max_total_exposure_pct),
+    maxDailyLossPct: toNullableNumber(wire.max_daily_loss_pct),
+    maxOpenPositions: wire.max_open_positions,
+    allowedSymbols: wire.allowed_symbols,
+  };
+}
+
+function mapTradingSwitchState(wire: WireTradingSwitchState): TradingSwitchState {
+  return { enabled: wire.enabled };
+}
+
+export interface ConnectBinanceCredentialsRequest {
+  apiKey: string;
+  apiSecret: string;
+}
+
 // --- public client ---
 
 export interface HermesApiClient {
@@ -533,6 +599,16 @@ export interface HermesApiClient {
   resumeBot(id: string, idempotencyKey: string): Promise<BotActionResult>;
   stopBot(id: string, idempotencyKey: string): Promise<BotActionResult>;
   deleteBot(id: string, idempotencyKey: string): Promise<BotActionResult>;
+  getBinanceCredentialStatus(): Promise<BinanceCredentialStatus>;
+  connectBinanceCredentials(
+    body: ConnectBinanceCredentialsRequest,
+    idempotencyKey: string
+  ): Promise<ConnectBinanceCredentialsResult>;
+  disconnectBinanceCredentials(idempotencyKey: string): Promise<void>;
+  getUserRiskLimits(): Promise<UserRiskLimits>;
+  updateUserRiskLimits(body: UserRiskLimits, idempotencyKey: string): Promise<UserRiskLimits>;
+  getTradingSwitch(): Promise<TradingSwitchState>;
+  setTradingSwitch(enabled: boolean, idempotencyKey: string): Promise<TradingSwitchState>;
 }
 
 class HermesApiClientImpl implements HermesApiClient {
@@ -701,6 +777,69 @@ class HermesApiClientImpl implements HermesApiClient {
       idempotencyKey,
     });
     return mapBotActionResult(wire);
+  }
+
+  async getBinanceCredentialStatus(): Promise<BinanceCredentialStatus> {
+    const wire = await request<WireBinanceCredentialStatus>('/settings/binance-credentials');
+    return mapBinanceCredentialStatus(wire);
+  }
+
+  async connectBinanceCredentials(
+    body: ConnectBinanceCredentialsRequest,
+    idempotencyKey: string
+  ): Promise<ConnectBinanceCredentialsResult> {
+    // A 409 here is a normal, expected outcome (verification failed, or
+    // the key has withdrawals enabled) — real structured data to render,
+    // not an error to throw, same convention as getBotPortfolio's 409.
+    const wire = await request<WireConnectBinanceCredentialsResult>('/settings/binance-credentials', {
+      method: 'PUT',
+      idempotencyKey,
+      dataStatuses: [409],
+      body: { api_key: body.apiKey, api_secret: body.apiSecret },
+    });
+    return mapConnectBinanceCredentialsResult(wire);
+  }
+
+  async disconnectBinanceCredentials(idempotencyKey: string): Promise<void> {
+    await request<{ connected: false }>('/settings/binance-credentials', {
+      method: 'DELETE',
+      idempotencyKey,
+    });
+  }
+
+  async getUserRiskLimits(): Promise<UserRiskLimits> {
+    const wire = await request<WireUserRiskLimits>('/settings/risk-limits');
+    return mapUserRiskLimits(wire);
+  }
+
+  async updateUserRiskLimits(body: UserRiskLimits, idempotencyKey: string): Promise<UserRiskLimits> {
+    const wire = await request<WireUserRiskLimits>('/settings/risk-limits', {
+      method: 'PUT',
+      idempotencyKey,
+      body: {
+        max_order_notional_quote: body.maxOrderNotionalQuote,
+        max_symbol_exposure_pct: body.maxSymbolExposurePct,
+        max_total_exposure_pct: body.maxTotalExposurePct,
+        max_daily_loss_pct: body.maxDailyLossPct,
+        max_open_positions: body.maxOpenPositions,
+        allowed_symbols: body.allowedSymbols,
+      },
+    });
+    return mapUserRiskLimits(wire);
+  }
+
+  async getTradingSwitch(): Promise<TradingSwitchState> {
+    const wire = await request<WireTradingSwitchState>('/settings/trading-switch');
+    return mapTradingSwitchState(wire);
+  }
+
+  async setTradingSwitch(enabled: boolean, idempotencyKey: string): Promise<TradingSwitchState> {
+    const wire = await request<WireTradingSwitchState>('/settings/trading-switch', {
+      method: 'PUT',
+      idempotencyKey,
+      body: { enabled },
+    });
+    return mapTradingSwitchState(wire);
   }
 }
 
