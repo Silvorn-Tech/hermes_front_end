@@ -10,6 +10,7 @@ import { BotGlyph } from '../../../components/bots/BotGlyph';
 import { AssetClassGlyph, AssetClassOption } from '../../../components/bots/AssetClassGlyph';
 import { OptionCard } from '../../../components/bots/OptionCard';
 import { BudgetSlider } from '../../../components/bots/BudgetSlider';
+import { InstrumentPicker } from '../../../components/bots/InstrumentPicker';
 import { useHermesData } from '../../../hooks/HermesDataContext';
 import { colors, radius, spacing } from '../../../constants';
 import { generateIdempotencyKey } from '../../../services/idempotency';
@@ -447,14 +448,12 @@ export default function BotFormScreen() {
           <Text variant="body" color="secondary">
             ¿Qué activo quieres operar?
           </Text>
-          <TextInput
+          <InstrumentPicker
+            assetClass={assetClassOption === 'EQUITY' ? 'EQUITY' : 'CRYPTO'}
             value={instrument}
-            onChangeText={setInstrument}
+            onChange={setInstrument}
             placeholder={assetClassOption === 'EQUITY' ? 'AAPL' : 'BTCUSDT'}
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            style={fieldStyle(touched && !instrumentValid)}
+            invalid={touched && !instrumentValid}
           />
           <Text variant="caption" color="muted">
             Binance
