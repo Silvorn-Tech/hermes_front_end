@@ -232,6 +232,7 @@ describe('HermesApiClient — every call uses the session cookie, never a bearer
             risk_profile: 'VORTEX',
             asset_class: 'CRYPTO',
             execution_venue: 'BINANCE',
+            execution_mode: 'SIMULATION',
             instrument: 'BTCUSDT',
             strategy_model: 'GARCH',
             strategy_config: null,
@@ -254,6 +255,7 @@ describe('HermesApiClient — every call uses the session cookie, never a bearer
         riskProfile: 'VORTEX',
         assetClass: 'CRYPTO',
         executionVenue: 'BINANCE',
+        executionMode: 'SIMULATION',
         instrument: 'BTCUSDT',
         strategyModel: 'GARCH',
         strategyConfig: null,
@@ -317,6 +319,115 @@ describe('HermesApiClient — every call uses the session cookie, never a bearer
     expect(url).toBe(`https://hermes.test/bots/bot-1/${path}`);
     expect(options.method).toBe('POST');
     expect(options.headers['Idempotency-Key']).toBe('key-3');
+  });
+});
+
+describe('HermesApiClient — Simulation Mode', () => {
+  it('getSimulationConfig maps the decimal-string capital to a number, sends no idempotency/auth extras', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, { initial_capital_quote: '10000', quote_asset: 'USDT' })
+    );
+
+    const config = await apiClient.getSimulationConfig();
+
+    expect(config).toEqual({ initialCapitalQuote: 10000, quoteAsset: 'USDT' });
+    const [url] = lastCall();
+    expect(url).toBe('https://hermes.test/config/simulation');
+  });
+
+  it('getBotPortfolio maps a 200 available response', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        available: true,
+        execution_mode: 'SIMULATION',
+        quote_asset: 'USDT',
+        initial_capital_quote: '10000',
+        cash_balance_quote: '9000',
+        current_quantity: '0.0200000000',
+        position_value_quote: '1000',
+        total_value_quote: '10000',
+        exposure_pct: '10.000',
+        return_pct: '0.00',
+      })
+    );
+
+    const portfolio = await apiClient.getBotPortfolio('bot-1');
+
+    expect(portfolio).toEqual({
+      available: true,
+      executionMode: 'SIMULATION',
+      quoteAsset: 'USDT',
+      initialCapitalQuote: 10000,
+      cashBalanceQuote: 9000,
+      currentQuantity: 0.02,
+      positionValueQuote: 1000,
+      totalValueQuote: 10000,
+      exposurePct: 10,
+      returnPct: 0,
+    });
+    const [url] = lastCall();
+    expect(url).toBe('https://hermes.test/bots/bot-1/portfolio');
+  });
+
+  it('getBotPortfolio returns {available: false, reason} for a LIVE bot\'s 409, never throwing', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(409, {
+        detail: { available: false, reason: 'This view is only available for SIMULATION bots.' },
+      })
+    );
+
+    const portfolio = await apiClient.getBotPortfolio('bot-1');
+
+    expect(portfolio).toEqual({
+      available: false,
+      reason: 'This view is only available for SIMULATION bots.',
+    });
+  });
+
+  it('getBotPerformance maps a 200 available response', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        available: true,
+        execution_mode: 'SIMULATION',
+        total_value_quote: '10200',
+        return_pct: '2.00',
+        max_drawdown_pct: '1.50',
+        realized_pnl_today_quote: '20',
+        trade_count: 3,
+        win_rate_pct: '66.67',
+        exposure_pct: '5.000',
+      })
+    );
+
+    const performance = await apiClient.getBotPerformance('bot-1');
+
+    expect(performance).toEqual({
+      available: true,
+      executionMode: 'SIMULATION',
+      totalValueQuote: 10200,
+      returnPct: 2,
+      maxDrawdownPct: 1.5,
+      realizedPnlTodayQuote: 20,
+      tradeCount: 3,
+      winRatePct: 66.67,
+      exposurePct: 5,
+    });
+  });
+
+  it('getBotPerformance returns {available: false, reason} for a LIVE bot\'s 409, never throwing', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(409, {
+        detail: { available: false, reason: 'This view is only available for SIMULATION bots.' },
+      })
+    );
+
+    const performance = await apiClient.getBotPerformance('bot-1');
+    expect(performance.available).toBe(false);
+  });
+
+  it('a non-409 error status on the bot portfolio route still throws, never silently returned as data', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockJsonResponse(500, { detail: 'boom' }));
+    await expect(apiClient.getBotPortfolio('bot-1')).rejects.toMatchObject({ status: 500 });
   });
 });
 

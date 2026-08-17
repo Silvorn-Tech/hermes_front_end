@@ -30,6 +30,18 @@ const assetClassLabel: Record<Bot['assetClass'], string> = {
   EQUITY: 'Equity',
 };
 
+// Text-and-emoji, never color-only — a colorblind user or a screenshot in
+// grayscale must still be able to tell SIMULATION from LIVE at a glance.
+const executionModeLabel: Record<Bot['executionMode'], string> = {
+  SIMULATION: '🧪 SIMULACIÓN',
+  LIVE: '🔴 LIVE',
+};
+
+const executionModeTone: Record<Bot['executionMode'], string> = {
+  SIMULATION: colors.brand,
+  LIVE: colors.danger,
+};
+
 interface Props {
   bot: Bot;
   variant?: 'compact' | 'full';
@@ -46,7 +58,10 @@ export function BotCard({ bot, variant = 'full', onPress }: Props) {
           {assetClassLabel[bot.assetClass]} · {bot.instrument}
         </Text>
       </View>
-      <Badge label={statusLabel[bot.status]} tone={statusTone[bot.status]} />
+      <View style={{ alignItems: 'flex-end', gap: spacing.xs }}>
+        <Badge label={statusLabel[bot.status]} tone={statusTone[bot.status]} />
+        <Badge label={executionModeLabel[bot.executionMode]} tone={executionModeTone[bot.executionMode]} />
+      </View>
     </View>
   );
 

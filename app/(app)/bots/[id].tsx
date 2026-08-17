@@ -9,6 +9,7 @@ import { Badge } from '../../../components/common/Badge';
 import { Button } from '../../../components/common/Button';
 import { EmptyState } from '../../../components/common/EmptyState';
 import { ConfirmDialog } from '../../../components/common/ConfirmDialog';
+import { SimulationPanel } from '../../../components/bots/SimulationPanel';
 import { useHermesData } from '../../../hooks/HermesDataContext';
 import { colors, spacing } from '../../../constants';
 import { generateIdempotencyKey } from '../../../services/idempotency';
@@ -32,6 +33,8 @@ const statusTone = {
 } as const;
 const assetClassLabel = { CRYPTO: 'Crypto', EQUITY: 'Equity' } as const;
 const venueLabel = { BINANCE: 'Binance' } as const;
+// Text-and-emoji, never color-only -- see BotCard.tsx's own executionModeLabel.
+const executionModeLabel = { SIMULATION: '🧪 Simulación', LIVE: '🔴 Live' } as const;
 
 type Action = 'pause' | 'resume' | 'stop';
 
@@ -152,6 +155,12 @@ export default function BotDetailScreen() {
           <Card style={{ gap: spacing.sm }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Text variant="body" color="muted">
+                Modo de ejecución
+              </Text>
+              <Text variant="body">{executionModeLabel[bot.executionMode]}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text variant="body" color="muted">
                 Asset class
               </Text>
               <Text variant="body">{assetClassLabel[bot.assetClass]}</Text>
@@ -174,6 +183,24 @@ export default function BotDetailScreen() {
               </Text>
               <Text variant="body">{bot.strategyModel ?? 'Sin definir'}</Text>
             </View>
+          </Card>
+        </Section>
+
+        {bot.executionMode === 'SIMULATION' ? (
+          <Section title="Portfolio simulado">
+            <SimulationPanel botId={bot.id} />
+          </Section>
+        ) : null}
+
+        <Section title="Live trading">
+          <Card style={{ gap: spacing.sm }}>
+            <Text variant="body" color="secondary">
+              Este bot opera en modo Simulación con dinero virtual. La activación de trading en vivo (dinero real)
+              estará disponible en una próxima versión.
+            </Text>
+            {/* disabled=true makes Pressable's onPress unreachable — this
+                never calls anything, exactly like the copy above says. */}
+            <Button label="Activar LIVE" variant="secondary" onPress={() => {}} disabled fullWidth />
           </Card>
         </Section>
 
