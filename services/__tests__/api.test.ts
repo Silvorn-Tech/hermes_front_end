@@ -180,6 +180,34 @@ describe('HermesApiClient — every call uses the session cookie, never a bearer
     expect(url).toBe('https://hermes.test/market-data?symbol=BTCUSDT');
   });
 
+  it('getExchangeInfo maps decimal-string filter fields and passes symbol as a query param', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        symbol: 'BTCUSDT',
+        status: 'TRADING',
+        filters: {
+          step_size: '0.00001',
+          min_qty: '0.00001',
+          max_qty: '9000',
+          min_notional: '5',
+        },
+      })
+    );
+
+    const data = await apiClient.getExchangeInfo('BTCUSDT');
+    expect(data).toEqual({
+      symbol: 'BTCUSDT',
+      status: 'TRADING',
+      stepSize: 0.00001,
+      minQty: 0.00001,
+      maxQty: 9000,
+      minNotional: 5,
+    });
+
+    const [url] = lastCall();
+    expect(url).toBe('https://hermes.test/exchange-info?symbol=BTCUSDT');
+  });
+
   it('createOrder sends the raw quantity/price strings unmodified and attaches Idempotency-Key', async () => {
     (global.fetch as jest.Mock).mockResolvedValueOnce(
       mockJsonResponse(201, {
