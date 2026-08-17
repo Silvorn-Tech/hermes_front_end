@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import BotDetailScreen from '../../app/(app)/bots/[id]';
 import { useHermesData } from '../../hooks/HermesDataContext';
+import { apiClient } from '../../services/api';
 import { Bot } from '../../types';
 
 const mockBack = jest.fn();
@@ -17,7 +18,41 @@ jest.mock('../../hooks/HermesDataContext', () => ({
   useHermesData: jest.fn(),
 }));
 
+jest.mock('../../services/api', () => {
+  const actual = jest.requireActual('../../services/api');
+  return {
+    ...actual,
+    apiClient: { getBotPortfolio: jest.fn(), getBotPerformance: jest.fn() },
+  };
+});
+
 const mockUseHermesData = useHermesData as jest.Mock;
+const mockApiClient = apiClient as jest.Mocked<typeof apiClient>;
+
+const simulationPortfolio = {
+  available: true as const,
+  executionMode: 'SIMULATION' as const,
+  quoteAsset: 'USDT',
+  initialCapitalQuote: 10000,
+  cashBalanceQuote: 9250,
+  currentQuantity: 0.015,
+  positionValueQuote: 750,
+  totalValueQuote: 10000,
+  exposurePct: 7.5,
+  returnPct: 0,
+};
+
+const simulationPerformance = {
+  available: true as const,
+  executionMode: 'SIMULATION' as const,
+  totalValueQuote: 10000,
+  returnPct: 0,
+  maxDrawdownPct: null,
+  realizedPnlTodayQuote: 0,
+  tradeCount: 0,
+  winRatePct: null,
+  exposurePct: 7.5,
+};
 
 const activeBot: Bot = {
   id: 'bot-1',
@@ -57,6 +92,8 @@ async function setup(bot: Bot, overrides: Record<string, jest.Mock> = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   mockParams = { id: 'bot-1' };
+  mockApiClient.getBotPortfolio.mockResolvedValue(simulationPortfolio);
+  mockApiClient.getBotPerformance.mockResolvedValue(simulationPerformance);
 });
 
 describe('Bot detail — real pause/resume/stop', () => {
@@ -153,5 +190,34 @@ describe('Bot detail — real pause/resume/stop', () => {
     await fireEvent.press(confirmButtons[confirmButtons.length - 1]);
 
     await waitFor(() => expect(stopBot).toHaveBeenCalledWith('bot-1', expect.any(String)));
+  });
+
+  it('shows the SIMULATION badge and the virtual portfolio once it loads', async () => {
+    const { getByText } = await setup(activeBot);
+
+    expect(getByText('🧪 Simulación')).toBeTruthy();
+    await waitFor(() => expect(mockApiClient.getBotPortfolio).toHaveBeenCalledWith('bot-1'));
+    await waitFor(() => expect(getByText(/Efectivo virtual/)).toBeTruthy());
+  });
+
+  it('Activar LIVE is visibly disabled and calls nothing when pressed', async () => {
+    const { getByText, pauseBot, resumeBot, stopBot } = await setup(activeBot);
+
+    expect(getByText(/estará disponible en una próxima versión/)).toBeTruthy();
+    await fireEvent.press(getByText('Activar LIVE'));
+
+    // No new action was attempted -- pause/resume/stop are the only real
+    // mutations this screen can trigger, and none of them fired.
+    expect(pauseBot).not.toHaveBeenCalled();
+    expect(resumeBot).not.toHaveBeenCalled();
+    expect(stopBot).not.toHaveBeenCalled();
+  });
+
+  it('a simulated portfolio fetch error shows a retry state, never a crash', async () => {
+    mockApiClient.getBotPortfolio.mockRejectedValue(new Error('network down'));
+    const { getByText } = await setup(activeBot);
+
+    await waitFor(() => expect(getByText('No se pudo cargar el portfolio simulado.')).toBeTruthy());
+    expect(getByText('Reintentar')).toBeTruthy();
   });
 });
