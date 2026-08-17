@@ -115,6 +115,21 @@ at the real backend. What matters for this deployment:
   present in the frontend build or image — only the public
   `EXPO_PUBLIC_API_URL`.
 
+## Deploy notifications
+
+`deploy.sh` posts a push notification (via [ntfy.sh](https://ntfy.sh),
+no signup, no credentials) whenever it actually deploys something or
+fails — routine "no-change" ticks (the common case, most of every 5
+minutes) stay silent. The topic is a fixed, unguessable string set in
+`deploy/romeo-setup.sh` (`NTFY_TOPIC`) — subscribe once from the ntfy
+app or `https://ntfy.sh/<topic>` in a browser. Not a secret in the
+credential sense (ntfy.sh topics are unauthenticated by default, so
+anyone who learns the string could publish or subscribe to it), just
+private enough that nobody stumbles onto it by chance; rotate it by
+changing the constant and re-running `romeo-setup.sh` (idempotent).
+This is best-effort only — a failed notification never fails the
+deploy itself.
+
 ## Manual deployment
 
 Trigger `Publish Docker image` via `workflow_dispatch` from the Actions tab

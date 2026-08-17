@@ -22,6 +22,13 @@ readonly APP_DIR="/opt/hermes-front-end"
 readonly SERVICE_NAME="hermes-front-end-deploy"
 readonly LISTEN_PORT="8081"   # loopback port the container publishes to
 readonly TAILSCALE_HTTPS_PORT="8443"
+# ntfy.sh push notification when deploy.sh actually deploys (or fails) --
+# not a secret (ntfy.sh topics are unauthenticated by default: anyone who
+# knows this string could publish/subscribe to it), just unguessable
+# enough that nobody stumbles onto it by chance. Subscribe from the
+# ntfy app/https://ntfy.sh/<topic> to receive these. Rotate by changing
+# this constant and re-running this script (idempotent).
+readonly NTFY_TOPIC="hermes-deploys-600e21984f3a"
 
 mkdir -p "$APP_DIR"
 
@@ -51,13 +58,22 @@ readonly CONTAINER_NAME="hermes-front-end"
 readonly IMAGE="ghcr.io/silvorn-tech/hermes_front_end:latest"
 readonly PRE_DEPLOY_HOOK="/opt/hermes-front-end/can-deploy"
 readonly LOCK_FILE="/run/hermes-front-end-deploy/deploy.lock"
+readonly NTFY_TOPIC="hermes-deploys-600e21984f3a"
 
 log() {
   printf '%s %s\n' "$(/usr/bin/date --iso-8601=seconds)" "$*"
 }
 
+# Best-effort: a notification failure (ntfy.sh unreachable, DNS hiccup,
+# etc.) must never fail the deploy itself, so errors here are swallowed.
+notify() {
+  /usr/bin/curl -fsS -m 10 -H "Title: $1" -d "$2" \
+    "https://ntfy.sh/${NTFY_TOPIC}" >/dev/null 2>&1 || true
+}
+
 fail() {
   log "decision=error result=failure reason=$1"
+  notify "hermes-front-end deploy FAILED" "$1"
   exit 1
 }
 
@@ -113,6 +129,7 @@ if [[ "$deployed_digest" != "$new_digest" ]]; then
 fi
 
 log "decision=deployed previous_digest=$previous_digest new_digest=$new_digest result=success"
+notify "hermes-front-end deployed" "${previous_digest:0:12} -> ${new_digest:0:12}"
 DEPLOY
 
 cat > "$APP_DIR/can-deploy" <<'HOOK'
@@ -183,8 +200,16 @@ echo "Done. Status:"
 systemctl status "${SERVICE_NAME}.timer" --no-pager
 tailscale serve status
 
-cat <<'NEXT'
+cat <<NEXT
 
+Subscribe to deploy notifications: install the ntfy app (or open
+https://ntfy.sh/${NTFY_TOPIC} in a browser) and subscribe to the topic
+"${NTFY_TOPIC}" -- you'll get a push the moment deploy.sh actually
+deploys something (or fails). Routine "no-change" ticks stay silent.
+
+NEXT
+
+cat <<'NEXT'
 Reminders:
 - If `docker compose pull` fails with "unauthorized" or "manifest unknown" on
   the first tick, GHCR either has no image yet (merge to main / run the
