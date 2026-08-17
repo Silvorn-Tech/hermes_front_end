@@ -4,6 +4,8 @@ import { useRouter } from 'expo-router';
 import { Text } from '../../components/common/Text';
 import { SkeletonCard, SkeletonList } from '../../components/common/LoadingSkeleton';
 import { ErrorState } from '../../components/common/ErrorState';
+import { EmptyState } from '../../components/common/EmptyState';
+import { Button } from '../../components/common/Button';
 import { SignalStrip } from '../../components/signals/SignalStrip';
 import { PerformanceCard } from '../../components/dashboard/PerformanceCard';
 import { PositionsSummary } from '../../components/dashboard/PositionsSummary';
@@ -15,7 +17,7 @@ import { pickTopSignal } from '../../utils/signalPriority';
 import { BotId } from '../../types';
 
 export default function DashboardScreen() {
-  const { status, positions, positionsError, bots, botsError, signals, refresh } = useHermesData();
+  const { status, positions, positionsError, binanceNotConnected, bots, botsError, signals, refresh } = useHermesData();
   const { isDesktop } = useResponsive();
   const router = useRouter();
 
@@ -68,7 +70,15 @@ export default function DashboardScreen() {
         </>
       )}
 
-      {positionsError ? (
+      {binanceNotConnected ? (
+        <View style={{ gap: spacing.md, alignItems: 'center' }}>
+          <EmptyState
+            title="Conectá tu cuenta de Binance"
+            description="Para ver tu portfolio y posiciones reales, conectá tu propia cuenta de Binance desde Settings. Tus bots en Simulación no lo requieren."
+          />
+          <Button label="Ir a Settings" onPress={() => router.push('/settings')} />
+        </View>
+      ) : positionsError ? (
         <ErrorState title="No se pudieron cargar las posiciones." description={positionsError} onRetry={refresh} />
       ) : (
         <PositionsSummary positions={positions} getBotById={getBotById} />

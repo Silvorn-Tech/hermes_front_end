@@ -443,6 +443,155 @@ describe('HermesApiClient — Simulation Mode', () => {
   });
 });
 
+describe('HermesApiClient — Settings (per-user Binance credentials, risk limits, trading switch)', () => {
+  it('getBinanceCredentialStatus maps a not-configured response', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, { configured: false, api_key_last4: null, verified_at: null, updated_at: null })
+    );
+
+    const status = await apiClient.getBinanceCredentialStatus();
+
+    expect(status).toEqual({ configured: false, apiKeyLast4: null, verifiedAt: null, updatedAt: null });
+    const [url] = lastCall();
+    expect(url).toBe('https://hermes.test/settings/binance-credentials');
+  });
+
+  it('connectBinanceCredentials PUTs the key/secret with the idempotency key and maps a 200 success', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, { connected: true, api_key_last4: '5678', verified_at: '2026-08-16T00:00:00Z' })
+    );
+
+    const result = await apiClient.connectBinanceCredentials(
+      { apiKey: 'my-real-key-5678', apiSecret: 'my-real-secret' },
+      'key-1'
+    );
+
+    expect(result).toEqual({ connected: true, apiKeyLast4: '5678', verifiedAt: '2026-08-16T00:00:00Z' });
+    const [url, options] = lastCall();
+    expect(url).toBe('https://hermes.test/settings/binance-credentials');
+    expect(options.method).toBe('PUT');
+    expect(options.headers['Idempotency-Key']).toBe('key-1');
+    expect(JSON.parse(options.body)).toEqual({ api_key: 'my-real-key-5678', api_secret: 'my-real-secret' });
+  });
+
+  it('connectBinanceCredentials returns {connected: false, reason} on a 409, never throwing', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(409, { detail: { connected: false, reason: 'This API key has withdrawals enabled.' } })
+    );
+
+    const result = await apiClient.connectBinanceCredentials(
+      { apiKey: 'unsafe-key', apiSecret: 'unsafe-secret' },
+      'key-1'
+    );
+
+    expect(result).toEqual({ connected: false, reason: 'This API key has withdrawals enabled.' });
+  });
+
+  it('a non-409 error status on connectBinanceCredentials still throws, never silently returned as data', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockJsonResponse(503, { detail: 'encryption not configured' }));
+    await expect(
+      apiClient.connectBinanceCredentials({ apiKey: 'a', apiSecret: 'b' }, 'key-1')
+    ).rejects.toMatchObject({ status: 503 });
+  });
+
+  it('disconnectBinanceCredentials issues a DELETE with the idempotency key', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockJsonResponse(200, { connected: false }));
+
+    await apiClient.disconnectBinanceCredentials('key-2');
+
+    const [url, options] = lastCall();
+    expect(url).toBe('https://hermes.test/settings/binance-credentials');
+    expect(options.method).toBe('DELETE');
+    expect(options.headers['Idempotency-Key']).toBe('key-2');
+  });
+
+  it('getUserRiskLimits maps decimal-string fields to numbers and null fields to null', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        max_order_notional_quote: '5000.0000000000',
+        max_symbol_exposure_pct: '25.000',
+        max_total_exposure_pct: null,
+        max_daily_loss_pct: null,
+        max_open_positions: 3,
+        allowed_symbols: ['BTCUSDT', 'ETHUSDT'],
+      })
+    );
+
+    const limits = await apiClient.getUserRiskLimits();
+
+    expect(limits).toEqual({
+      maxOrderNotionalQuote: 5000,
+      maxSymbolExposurePct: 25,
+      maxTotalExposurePct: null,
+      maxDailyLossPct: null,
+      maxOpenPositions: 3,
+      allowedSymbols: ['BTCUSDT', 'ETHUSDT'],
+    });
+  });
+
+  it('updateUserRiskLimits PUTs the limits with the idempotency key', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        max_order_notional_quote: '5000',
+        max_symbol_exposure_pct: null,
+        max_total_exposure_pct: null,
+        max_daily_loss_pct: null,
+        max_open_positions: null,
+        allowed_symbols: null,
+      })
+    );
+
+    const result = await apiClient.updateUserRiskLimits(
+      {
+        maxOrderNotionalQuote: 5000,
+        maxSymbolExposurePct: null,
+        maxTotalExposurePct: null,
+        maxDailyLossPct: null,
+        maxOpenPositions: null,
+        allowedSymbols: null,
+      },
+      'key-3'
+    );
+
+    expect(result.maxOrderNotionalQuote).toBe(5000);
+    const [url, options] = lastCall();
+    expect(url).toBe('https://hermes.test/settings/risk-limits');
+    expect(options.method).toBe('PUT');
+    expect(options.headers['Idempotency-Key']).toBe('key-3');
+    expect(JSON.parse(options.body)).toEqual({
+      max_order_notional_quote: 5000,
+      max_symbol_exposure_pct: null,
+      max_total_exposure_pct: null,
+      max_daily_loss_pct: null,
+      max_open_positions: null,
+      allowed_symbols: null,
+    });
+  });
+
+  it('getTradingSwitch maps the enabled flag', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockJsonResponse(200, { enabled: true }));
+
+    const result = await apiClient.getTradingSwitch();
+
+    expect(result).toEqual({ enabled: true });
+    const [url] = lastCall();
+    expect(url).toBe('https://hermes.test/settings/trading-switch');
+  });
+
+  it('setTradingSwitch PUTs the new value with the idempotency key', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockJsonResponse(200, { enabled: false }));
+
+    const result = await apiClient.setTradingSwitch(false, 'key-4');
+
+    expect(result).toEqual({ enabled: false });
+    const [url, options] = lastCall();
+    expect(url).toBe('https://hermes.test/settings/trading-switch');
+    expect(options.method).toBe('PUT');
+    expect(options.headers['Idempotency-Key']).toBe('key-4');
+    expect(JSON.parse(options.body)).toEqual({ enabled: false });
+  });
+});
+
 describe('HermesApiClient — error mapping', () => {
   it.each([401, 403, 404, 409, 422, 429, 500, 502, 503])(
     'throws a HermesApiError carrying status %i and the backend detail',

@@ -38,6 +38,12 @@ interface HermesDataValue {
   status: LoadStatus;
   portfolio: Portfolio | null;
   portfolioError: string | null;
+  /** True when /portfolio (or /positions) 409'd specifically because this
+   * user has never connected a Binance account — distinct from a generic
+   * load failure (`portfolioError`/`positionsError`), so the UI can show
+   * a "connect your account" prompt instead of an error state. See
+   * hermes_v2's docs/architecture/multi-tenant-trading.md. */
+  binanceNotConnected: boolean;
   positions: Position[];
   positionsError: string | null;
   orders: Order[];
@@ -75,6 +81,7 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [portfolioError, setPortfolioError] = useState<string | null>(null);
+  const [binanceNotConnected, setBinanceNotConnected] = useState(false);
   const [positions, setPositions] = useState<Position[]>([]);
   const [positionsError, setPositionsError] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -99,8 +106,14 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
       const result = await apiClient.getPortfolio();
       setPortfolio(result);
       setPortfolioError(null);
+      setBinanceNotConnected(false);
     } catch (error) {
-      setPortfolioError(describeError(error, 'No se pudo cargar el portfolio.'));
+      if (error instanceof HermesApiError && error.status === 409) {
+        setBinanceNotConnected(true);
+        setPortfolioError(null);
+      } else {
+        setPortfolioError(describeError(error, 'No se pudo cargar el portfolio.'));
+      }
       handlePotential401(error);
     }
   }, [handlePotential401]);
@@ -110,8 +123,14 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
       const result = await apiClient.getPositions();
       setPositions(result);
       setPositionsError(null);
+      setBinanceNotConnected(false);
     } catch (error) {
-      setPositionsError(describeError(error, 'No se pudieron cargar las posiciones.'));
+      if (error instanceof HermesApiError && error.status === 409) {
+        setBinanceNotConnected(true);
+        setPositionsError(null);
+      } else {
+        setPositionsError(describeError(error, 'No se pudieron cargar las posiciones.'));
+      }
       handlePotential401(error);
     }
   }, [handlePotential401]);
@@ -151,6 +170,7 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
     if (!isAuthorized) {
       setStatus('loading');
       setPortfolio(null);
+      setBinanceNotConnected(false);
       setPositions([]);
       setOrders([]);
       setBots([]);
@@ -320,6 +340,7 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
       status,
       portfolio,
       portfolioError,
+      binanceNotConnected,
       positions,
       positionsError,
       orders,
@@ -348,6 +369,7 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
       status,
       portfolio,
       portfolioError,
+      binanceNotConnected,
       positions,
       positionsError,
       orders,

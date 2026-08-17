@@ -6,3 +6,4 @@ export * from './order';
 export * from './signal';
 export * from './activity';
 export * from './risk';
+export * from './settings';
