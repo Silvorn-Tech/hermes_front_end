@@ -168,6 +168,40 @@ describe('Bot create form — matches the approved prototype, wired to the real 
     await waitFor(() => expect(getByText(/≈ 0.5138 BTC/)).toBeTruthy(), { timeout: 2000 });
   });
 
+  it('shows curated suggestions while typing an instrument, filtered by asset class', async () => {
+    const { getByPlaceholderText, getByText, queryByText } = await render(<BotFormScreen />);
+
+    await fireEvent(getByPlaceholderText('BTCUSDT'), 'focus');
+    await fireEvent.changeText(getByPlaceholderText('BTCUSDT'), 'ETH');
+
+    expect(getByText('ETHUSDT')).toBeTruthy();
+    expect(queryByText('AAPL')).toBeNull(); // Crypto list, not Equity
+
+    await fireEvent.press(getByText('ETHUSDT'));
+    expect(getByPlaceholderText('BTCUSDT').props.value).toBe('ETHUSDT');
+  });
+
+  it('shows the Equity suggestion list, not the Crypto one, once Acciones is selected', async () => {
+    const { getByText, getByPlaceholderText, queryByText } = await render(<BotFormScreen />);
+
+    await fireEvent.press(getByText('Acciones'));
+    await fireEvent(getByPlaceholderText('AAPL'), 'focus');
+    await fireEvent.changeText(getByPlaceholderText('AAPL'), 'MS');
+
+    expect(getByText('MSFT')).toBeTruthy();
+    expect(queryByText('BTCUSDT')).toBeNull();
+  });
+
+  it('suggestions never block typing a symbol outside the curated list', async () => {
+    const { getByPlaceholderText, queryByText } = await render(<BotFormScreen />);
+
+    await fireEvent(getByPlaceholderText('BTCUSDT'), 'focus');
+    await fireEvent.changeText(getByPlaceholderText('BTCUSDT'), 'SHIBUSDT');
+
+    expect(getByPlaceholderText('BTCUSDT').props.value).toBe('SHIBUSDT');
+    expect(queryByText('BTCUSDT')).toBeNull(); // no curated match, no dropdown — free text still works
+  });
+
   it('dragging the budget slider recomputes the quantity live', async () => {
     const { getByPlaceholderText, getByTestId, getByText } = await render(<BotFormScreen />);
     await fireEvent.changeText(getByPlaceholderText('BTCUSDT'), 'BTCUSDT');
