@@ -21,7 +21,7 @@ jest.mock('../../services/api', () => {
   const actual = jest.requireActual('../../services/api');
   return {
     ...actual,
-    apiClient: { getMarketData: jest.fn() },
+    apiClient: { getMarketData: jest.fn(), getSimulationConfig: jest.fn() },
   };
 });
 
@@ -34,6 +34,7 @@ const existingBot: Bot = {
   riskProfile: 'VORTEX',
   assetClass: 'CRYPTO',
   executionVenue: 'BINANCE',
+  executionMode: 'SIMULATION',
   instrument: 'BTCUSDT',
   strategyModel: 'GARCH',
   strategyConfig: null,
@@ -80,6 +81,7 @@ beforeEach(() => {
     lowPrice: 0,
     volume: 0,
   });
+  mockApiClient.getSimulationConfig.mockResolvedValue({ initialCapitalQuote: 10000, quoteAsset: 'USDT' });
   mockContext();
 });
 
@@ -102,10 +104,24 @@ describe('Bot create form — matches the approved prototype, wired to the real 
     expect(getByText('Regime Based')).toBeTruthy();
     expect(getByText('INSTRUMENTO')).toBeTruthy();
     expect(getByPlaceholderText('BTCUSDT')).toBeTruthy();
+    expect(getByText('MODO DE EJECUCIÓN')).toBeTruthy();
+    expect(getAllByText('🧪 Simulación').length).toBeGreaterThan(0); // card + summary
+    expect(getByText('🔴 Live')).toBeTruthy();
     expect(getByText('PRESUPUESTO A UTILIZAR')).toBeTruthy();
     expect(getByText('RESUMEN')).toBeTruthy();
     expect(getByText('PAUSED')).toBeTruthy();
     expect(getByText('Hermes no ejecutará operaciones hasta que reanudes el bot.')).toBeTruthy();
+  });
+
+  it('Live is visibly disabled and never selectable — every bot this form creates is SIMULATION', async () => {
+    const { getByText, getAllByText } = await render(<BotFormScreen />);
+
+    expect(getByText('La activación de Live estará disponible en una próxima versión.')).toBeTruthy();
+
+    await fireEvent.press(getByText('🔴 Live'));
+    // Still shows Simulación in the summary -- pressing the disabled Live
+    // card never changed anything, and there is no state that could have.
+    await waitFor(() => expect(getAllByText('🧪 Simulación').length).toBeGreaterThan(0));
   });
 
   it('Tokenized Equity is disabled — pressing it never changes the selection', async () => {
@@ -164,8 +180,8 @@ describe('Bot create form — matches the approved prototype, wired to the real 
     await fireEvent.changeText(getByPlaceholderText('BTCUSDT'), 'btcusdt');
 
     await waitFor(() => expect(mockApiClient.getMarketData).toHaveBeenCalledWith('BTCUSDT'), { timeout: 2000 });
-    // 20% (default) of 128450 USDT at 50000 USDT/BTC = 0.5138 BTC.
-    await waitFor(() => expect(getByText(/≈ 0.5138 BTC/)).toBeTruthy(), { timeout: 2000 });
+    // 20% (default) of the $10,000 simulation capital at 50000 USDT/BTC = 0.04 BTC.
+    await waitFor(() => expect(getByText(/≈ 0.04 BTC/)).toBeTruthy(), { timeout: 2000 });
   });
 
   it('shows curated suggestions while typing an instrument, filtered by asset class', async () => {
@@ -205,21 +221,21 @@ describe('Bot create form — matches the approved prototype, wired to the real 
   it('dragging the budget slider recomputes the quantity live', async () => {
     const { getByPlaceholderText, getByTestId, getByText } = await render(<BotFormScreen />);
     await fireEvent.changeText(getByPlaceholderText('BTCUSDT'), 'BTCUSDT');
-    await waitFor(() => expect(getByText(/≈ 0.5138 BTC/)).toBeTruthy(), { timeout: 2000 });
+    await waitFor(() => expect(getByText(/≈ 0.04 BTC/)).toBeTruthy(), { timeout: 2000 });
 
     await fireEvent(getByTestId('budget-slider'), 'valueChange', 50);
 
-    // 50% of 128450 / 50000 = 1.2845 BTC.
-    await waitFor(() => expect(getByText(/≈ 1.2845 BTC/)).toBeTruthy());
+    // 50% of the $10,000 simulation capital / 50000 = 0.1 BTC.
+    await waitFor(() => expect(getByText(/≈ 0.1 BTC/)).toBeTruthy());
   });
 
-  it('falls back to a direct quantity input when the portfolio is unavailable', async () => {
-    mockContext({ portfolio: null });
+  it('falls back to a direct quantity input when the simulation config is unavailable', async () => {
+    mockApiClient.getSimulationConfig.mockRejectedValue(new Error('network down'));
     const { getByText, queryByText, getByPlaceholderText } = await render(<BotFormScreen />);
 
+    await waitFor(() => expect(getByText('CANTIDAD OBJETIVO')).toBeTruthy());
     expect(queryByText('PRESUPUESTO A UTILIZAR')).toBeNull();
-    expect(getByText('CANTIDAD OBJETIVO')).toBeTruthy();
-    expect(getByText(/No se pudo determinar tu presupuesto disponible/)).toBeTruthy();
+    expect(getByText(/No se pudo determinar el capital inicial de simulación/)).toBeTruthy();
     expect(getByPlaceholderText('0.00')).toBeTruthy();
   });
 
@@ -238,9 +254,10 @@ describe('Bot create form — matches the approved prototype, wired to the real 
     expect(getByText('Ingresá un instrumento (ej. BTCUSDT).')).toBeTruthy();
   });
 
-  it('blocks submission when no valid quantity can be resolved (no portfolio, blank quantity)', async () => {
-    mockContext({ portfolio: null });
+  it('blocks submission when no valid quantity can be resolved (no simulation config, blank quantity)', async () => {
+    mockApiClient.getSimulationConfig.mockRejectedValue(new Error('network down'));
     const { getByPlaceholderText, getByText } = await render(<BotFormScreen />);
+    await waitFor(() => expect(getByText('CANTIDAD OBJETIVO')).toBeTruthy());
     await fireEvent.changeText(getByPlaceholderText('Ej. Mi estrategia BTC'), 'My Bot');
     await fireEvent.changeText(getByPlaceholderText('BTCUSDT'), 'BTCUSDT');
     await fireEvent.press(getByText('Crear bot'));
@@ -254,7 +271,7 @@ describe('Bot create form — matches the approved prototype, wired to the real 
     await fireEvent.press(getByText('Vortex'));
     await fireEvent.press(getByText('Regime Based'));
     await fireEvent.changeText(getByPlaceholderText('BTCUSDT'), 'btcusdt');
-    await waitFor(() => expect(getByText(/≈ 0.5138 BTC/)).toBeTruthy(), { timeout: 2000 });
+    await waitFor(() => expect(getByText(/≈ 0.04 BTC/)).toBeTruthy(), { timeout: 2000 });
 
     await fireEvent.press(getByText('Crear bot'));
 
@@ -266,7 +283,7 @@ describe('Bot create form — matches the approved prototype, wired to the real 
       assetClass: 'CRYPTO',
       executionVenue: 'BINANCE',
       instrument: 'BTCUSDT',
-      targetQuantity: '0.5138',
+      targetQuantity: '0.04',
       strategyModel: 'REGIME_BASED',
     });
     await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
@@ -293,7 +310,7 @@ describe('Bot create form — matches the approved prototype, wired to the real 
     const { getByPlaceholderText, getByText, queryByText } = await render(<BotFormScreen />);
     await fireEvent.changeText(getByPlaceholderText('Ej. Mi estrategia BTC'), 'My Bot');
     await fireEvent.changeText(getByPlaceholderText('BTCUSDT'), 'BTCUSDT');
-    await waitFor(() => expect(getByText(/≈ 0.5138 BTC/)).toBeTruthy(), { timeout: 2000 });
+    await waitFor(() => expect(getByText(/≈ 0.04 BTC/)).toBeTruthy(), { timeout: 2000 });
 
     await fireEvent.press(getByText('Crear bot'));
     await fireEvent.press(getByText('Creando…')); // a second press while submitting is a no-op
@@ -316,7 +333,7 @@ describe('Bot create form — matches the approved prototype, wired to the real 
     const { getByPlaceholderText, getByText } = await render(<BotFormScreen />);
     await fireEvent.changeText(getByPlaceholderText('Ej. Mi estrategia BTC'), 'My Bot');
     await fireEvent.changeText(getByPlaceholderText('BTCUSDT'), 'BTCUSDT');
-    await waitFor(() => expect(getByText(/≈ 0.5138 BTC/)).toBeTruthy(), { timeout: 2000 });
+    await waitFor(() => expect(getByText(/≈ 0.04 BTC/)).toBeTruthy(), { timeout: 2000 });
 
     await fireEvent.press(getByText('Crear bot'));
 
@@ -331,7 +348,7 @@ describe('Bot create form — matches the approved prototype, wired to the real 
     const { getByPlaceholderText, getByText } = await render(<BotFormScreen />);
     await fireEvent.changeText(getByPlaceholderText('Ej. Mi estrategia BTC'), 'My Bot');
     await fireEvent.changeText(getByPlaceholderText('BTCUSDT'), 'BTCUSDT');
-    await waitFor(() => expect(getByText(/≈ 0.5138 BTC/)).toBeTruthy(), { timeout: 2000 });
+    await waitFor(() => expect(getByText(/≈ 0.04 BTC/)).toBeTruthy(), { timeout: 2000 });
 
     await fireEvent.press(getByText('Crear bot'));
 
@@ -346,7 +363,7 @@ describe('Bot create form — matches the approved prototype, wired to the real 
     const { getByPlaceholderText, getByText } = await render(<BotFormScreen />);
     await fireEvent.changeText(getByPlaceholderText('Ej. Mi estrategia BTC'), 'My Bot');
     await fireEvent.changeText(getByPlaceholderText('BTCUSDT'), 'BTCUSDT');
-    await waitFor(() => expect(getByText(/≈ 0.5138 BTC/)).toBeTruthy(), { timeout: 2000 });
+    await waitFor(() => expect(getByText(/≈ 0.04 BTC/)).toBeTruthy(), { timeout: 2000 });
 
     await fireEvent.press(getByText('Crear bot'));
 

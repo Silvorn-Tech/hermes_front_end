@@ -24,8 +24,11 @@ import {
   AssetClass,
   Balance,
   Bot,
+  BotPerformance,
+  BotPortfolio,
   EquityCurve,
   EquityPeriod,
+  ExecutionMode,
   ExecutionVenue,
   Order,
   OrderSide,
@@ -33,6 +36,7 @@ import {
   Portfolio,
   Position,
   RiskProfile,
+  SimulationConfig,
 } from '../types';
 
 export class HermesApiError extends Error {
@@ -62,6 +66,14 @@ interface RequestOptions {
   query?: Record<string, string | undefined>;
   body?: unknown;
   idempotencyKey?: string;
+  /** Status codes whose JSON body is real, structured data to return —
+   * not an error to throw. Used by GET /bots/{id}/portfolio and
+   * /performance, which return 409 `{"available": false, "reason": ...}`
+   * for a LIVE bot: that's a normal, expected response shape the caller
+   * renders, not a failure. FastAPI wraps every HTTPException's `detail`
+   * under a `detail` key, so it's unwrapped here the same way the error
+   * path below already reads `payload.detail`. */
+  dataStatuses?: number[];
 }
 
 /**
@@ -99,6 +111,15 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   if (!response.ok) {
+    if (options.dataStatuses?.includes(response.status)) {
+      try {
+        const payload = await response.json();
+        return (payload?.detail ?? payload) as T;
+      } catch {
+        return undefined as T;
+      }
+    }
+
     let detail = `Hermes respondió ${response.status}.`;
     try {
       const payload = await response.json();
@@ -187,12 +208,52 @@ interface WireOrder {
   terminal_at: string | null;
 }
 
+interface WireSimulationConfig {
+  initial_capital_quote: string;
+  quote_asset: string;
+}
+
+interface WireBotPortfolioAvailable {
+  available: true;
+  execution_mode: ExecutionMode;
+  quote_asset: string;
+  initial_capital_quote: string;
+  cash_balance_quote: string;
+  current_quantity: string;
+  position_value_quote: string;
+  total_value_quote: string;
+  exposure_pct: string;
+  return_pct: string | null;
+}
+
+interface WireNotAvailable {
+  available: false;
+  reason: string;
+}
+
+type WireBotPortfolio = WireBotPortfolioAvailable | WireNotAvailable;
+
+interface WireBotPerformanceAvailable {
+  available: true;
+  execution_mode: ExecutionMode;
+  total_value_quote: string;
+  return_pct: string | null;
+  max_drawdown_pct: string | null;
+  realized_pnl_today_quote: string;
+  trade_count: number;
+  win_rate_pct: string | null;
+  exposure_pct: string;
+}
+
+type WireBotPerformance = WireBotPerformanceAvailable | WireNotAvailable;
+
 interface WireBot {
   id: string;
   name: string;
   risk_profile: RiskProfile;
   asset_class: AssetClass;
   execution_venue: ExecutionVenue;
+  execution_mode: ExecutionMode;
   instrument: string;
   strategy_model: string | null;
   strategy_config: Record<string, unknown> | null;
@@ -378,6 +439,48 @@ function mapOrderActionResult(wire: WireOrderActionResult): OrderActionResult {
   };
 }
 
+function mapSimulationConfig(wire: WireSimulationConfig): SimulationConfig {
+  return {
+    initialCapitalQuote: toNumber(wire.initial_capital_quote),
+    quoteAsset: wire.quote_asset,
+  };
+}
+
+function mapBotPortfolio(wire: WireBotPortfolio): BotPortfolio {
+  if (!wire.available) {
+    return { available: false, reason: wire.reason };
+  }
+  return {
+    available: true,
+    executionMode: wire.execution_mode,
+    quoteAsset: wire.quote_asset,
+    initialCapitalQuote: toNumber(wire.initial_capital_quote),
+    cashBalanceQuote: toNumber(wire.cash_balance_quote),
+    currentQuantity: toNumber(wire.current_quantity),
+    positionValueQuote: toNumber(wire.position_value_quote),
+    totalValueQuote: toNumber(wire.total_value_quote),
+    exposurePct: toNumber(wire.exposure_pct),
+    returnPct: toNullableNumber(wire.return_pct),
+  };
+}
+
+function mapBotPerformance(wire: WireBotPerformance): BotPerformance {
+  if (!wire.available) {
+    return { available: false, reason: wire.reason };
+  }
+  return {
+    available: true,
+    executionMode: wire.execution_mode,
+    totalValueQuote: toNumber(wire.total_value_quote),
+    returnPct: toNullableNumber(wire.return_pct),
+    maxDrawdownPct: toNullableNumber(wire.max_drawdown_pct),
+    realizedPnlTodayQuote: toNumber(wire.realized_pnl_today_quote),
+    tradeCount: wire.trade_count,
+    winRatePct: toNullableNumber(wire.win_rate_pct),
+    exposurePct: toNumber(wire.exposure_pct),
+  };
+}
+
 function mapBot(wire: WireBot): Bot {
   return {
     id: wire.id,
@@ -385,6 +488,7 @@ function mapBot(wire: WireBot): Bot {
     riskProfile: wire.risk_profile,
     assetClass: wire.asset_class,
     executionVenue: wire.execution_venue,
+    executionMode: wire.execution_mode,
     instrument: wire.instrument,
     strategyModel: wire.strategy_model,
     strategyConfig: wire.strategy_config,
@@ -418,8 +522,11 @@ export interface HermesApiClient {
   createOrder(body: CreateOrderRequest, idempotencyKey: string): Promise<OrderActionResult>;
   cancelOrder(orderId: string, idempotencyKey: string): Promise<OrderActionResult>;
   closePosition(symbol: string, idempotencyKey: string): Promise<OrderActionResult>;
+  getSimulationConfig(): Promise<SimulationConfig>;
   getBots(): Promise<Bot[]>;
   getBot(id: string): Promise<Bot>;
+  getBotPortfolio(id: string): Promise<BotPortfolio>;
+  getBotPerformance(id: string): Promise<BotPerformance>;
   createBot(body: CreateBotRequest, idempotencyKey: string): Promise<BotActionResult>;
   updateBot(id: string, body: UpdateBotRequest, idempotencyKey: string): Promise<BotActionResult>;
   pauseBot(id: string, idempotencyKey: string): Promise<BotActionResult>;
@@ -498,6 +605,11 @@ class HermesApiClientImpl implements HermesApiClient {
     return mapOrderActionResult(wire);
   }
 
+  async getSimulationConfig(): Promise<SimulationConfig> {
+    const wire = await request<WireSimulationConfig>('/config/simulation');
+    return mapSimulationConfig(wire);
+  }
+
   async getBots(): Promise<Bot[]> {
     const wire = await request<{ bots: WireBot[] }>('/bots');
     return wire.bots.map(mapBot);
@@ -506,6 +618,20 @@ class HermesApiClientImpl implements HermesApiClient {
   async getBot(id: string): Promise<Bot> {
     const wire = await request<WireBot>(`/bots/${encodeURIComponent(id)}`);
     return mapBot(wire);
+  }
+
+  async getBotPortfolio(id: string): Promise<BotPortfolio> {
+    const wire = await request<WireBotPortfolio>(`/bots/${encodeURIComponent(id)}/portfolio`, {
+      dataStatuses: [409],
+    });
+    return mapBotPortfolio(wire);
+  }
+
+  async getBotPerformance(id: string): Promise<BotPerformance> {
+    const wire = await request<WireBotPerformance>(`/bots/${encodeURIComponent(id)}/performance`, {
+      dataStatuses: [409],
+    });
+    return mapBotPerformance(wire);
   }
 
   async createBot(body: CreateBotRequest, idempotencyKey: string): Promise<BotActionResult> {

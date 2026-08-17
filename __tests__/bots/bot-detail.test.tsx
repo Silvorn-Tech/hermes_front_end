@@ -25,6 +25,7 @@ const activeBot: Bot = {
   riskProfile: 'VORTEX',
   assetClass: 'CRYPTO',
   executionVenue: 'BINANCE',
+  executionMode: 'SIMULATION',
   instrument: 'BTCUSDT',
   strategyModel: 'GARCH',
   strategyConfig: null,

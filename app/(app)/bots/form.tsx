@@ -127,7 +127,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 export default function BotFormScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const router = useRouter();
-  const { bots, portfolio, createBot, updateBot } = useHermesData();
+  const { bots, createBot, updateBot } = useHermesData();
   const isEdit = Boolean(id);
   const existingBot = isEdit ? bots.find((b) => b.id === id) : undefined;
 
@@ -152,18 +152,45 @@ export default function BotFormScreen() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState(() => generateIdempotencyKey());
 
+  // Every bot this form creates is SIMULATION (see the "Modo de ejecución"
+  // section below) — the budget slider's available budget is therefore the
+  // bot's own virtual starting capital, not the real account's free
+  // balance. Read once from the backend (GET /config/simulation) instead
+  // of hardcoding the $10,000 default here, so this stays correct if
+  // HERMES_SIMULATION_INITIAL_CAPITAL_USD is ever reconfigured.
+  const [simulationCapital, setSimulationCapital] = useState<number | null>(null);
+  const [simulationQuoteAsset, setSimulationQuoteAsset] = useState('USDT');
+
+  useEffect(() => {
+    if (isEdit) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const config = await apiClient.getSimulationConfig();
+        if (!cancelled) {
+          setSimulationCapital(config.initialCapitalQuote);
+          setSimulationQuoteAsset(config.quoteAsset);
+        }
+      } catch {
+        // No fabricated fallback number — the direct-quantity-input path
+        // below covers "the budget couldn't be determined" already.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEdit]);
+
   const trimmedInstrument = instrument.trim().toUpperCase();
   const nameValid = name.trim().length > 0;
   const instrumentValid = trimmedInstrument.length > 0;
 
-  const quoteAsset = portfolio?.quoteAsset ?? 'USDT';
-  const availableBudget = portfolio
-    ? (portfolio.balances.find((b) => b.asset === portfolio.quoteAsset)?.free ?? 0)
-    : null;
+  const quoteAsset = simulationQuoteAsset;
+  const availableBudget = simulationCapital;
 
   // Live calculator only for Crypto (the only asset class with a real
   // price feed today — GET /market-data is a Binance passthrough) and
-  // only once we actually know the user's real available balance.
+  // only once the simulation account's starting capital is known.
   const useLiveBudgetCalculator = !isEdit && assetClassOption === 'CRYPTO' && availableBudget !== null;
 
   useEffect(() => {
@@ -460,6 +487,31 @@ export default function BotFormScreen() {
           </Text>
         </View>
 
+        <View style={{ gap: spacing.sm }}>
+          <Text variant="caption" color="muted">
+            MODO DE EJECUCIÓN
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
+            <OptionCard
+              title="🧪 Simulación"
+              description="Opera con dinero virtual y precios de mercado reales. Ninguna orden llega a Binance."
+              selected
+              onPress={() => {}}
+            />
+            <OptionCard
+              title="🔴 Live"
+              description="Operar con dinero real."
+              badge="La activación de Live estará disponible en una próxima versión."
+              selected={false}
+              disabled
+              onPress={() => {}}
+            />
+          </View>
+          <Text variant="caption" color="muted">
+            Todo bot nuevo se crea en modo Simulación. No hay forma de crear un bot Live todavía.
+          </Text>
+        </View>
+
         {useLiveBudgetCalculator ? (
           <View style={{ gap: spacing.sm }}>
             <BudgetSlider
@@ -468,6 +520,9 @@ export default function BotFormScreen() {
               availableBudget={availableBudget as number}
               quoteAsset={quoteAsset}
             />
+            <Text variant="caption" color="muted">
+              Presupuesto virtual de simulación — no es dinero real.
+            </Text>
             {!instrumentValid ? (
               <Text variant="caption" color="muted">
                 Ingresá un instrumento para calcular la cantidad.
@@ -494,7 +549,7 @@ export default function BotFormScreen() {
             <Text variant="caption" color="muted">
               {assetClassOption === 'EQUITY'
                 ? 'Hermes todavía no tiene un feed de precios en vivo para acciones — ingresá la cantidad directamente.'
-                : 'No se pudo determinar tu presupuesto disponible — ingresá la cantidad directamente.'}
+                : 'No se pudo determinar el capital inicial de simulación — ingresá la cantidad directamente.'}
             </Text>
             <TextInput
               value={targetQuantity}
@@ -520,6 +575,7 @@ export default function BotFormScreen() {
           <Text variant="caption" color="muted">
             RESUMEN
           </Text>
+          <SummaryRow label="Modo de ejecución" value="🧪 Simulación" />
           <SummaryRow label="Activo" value={assetClassLabel} />
           <SummaryRow label="Riesgo" value={riskProfileLabel} />
           <SummaryRow label="Estrategia" value={strategyLabel} />
