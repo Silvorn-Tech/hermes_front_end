@@ -10,6 +10,7 @@ import { Button } from '../../../components/common/Button';
 import { EmptyState } from '../../../components/common/EmptyState';
 import { ConfirmDialog } from '../../../components/common/ConfirmDialog';
 import { SimulationPanel } from '../../../components/bots/SimulationPanel';
+import { PriceChart } from '../../../components/bots/PriceChart';
 import { useHermesData } from '../../../hooks/HermesDataContext';
 import { colors, spacing } from '../../../constants';
 import { generateIdempotencyKey } from '../../../services/idempotency';
@@ -150,6 +151,12 @@ export default function BotDetailScreen() {
             </Text>
           ) : null}
         </Section>
+
+        {bot.executionMode === 'SIMULATION' ? (
+          <Section title="Gráfico">
+            <PriceChart symbol={bot.instrument} botId={bot.id} refreshKey={bot.currentQuantity} />
+          </Section>
+        ) : null}
 
         <Section title="Configuración">
           <Card style={{ gap: spacing.sm }}>
