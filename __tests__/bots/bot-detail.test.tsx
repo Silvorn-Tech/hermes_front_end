@@ -384,6 +384,17 @@ describe('Bot detail — price chart', () => {
     await waitFor(() => expect(mockApiClient.getBotTrades).toHaveBeenCalledWith('bot-1'));
   });
 
+  it('stays visible for a LIVE bot too -- the chart never changes between modes', async () => {
+    mockApiClient.getBotPortfolio.mockResolvedValue(liveBotPortfolio);
+    mockApiClient.getBotPerformance.mockResolvedValue(liveBotPerformance);
+    const liveBot: Bot = { ...activeBot, executionMode: 'LIVE' };
+    const { getByText } = await setup(liveBot);
+
+    expect(getByText('GRÁFICO')).toBeTruthy();
+    await waitFor(() => expect(mockApiClient.getKlines).toHaveBeenCalledWith('BTCUSDT', '15m', 80));
+    await waitFor(() => expect(mockApiClient.getBotTrades).toHaveBeenCalledWith('bot-1'));
+  });
+
   it('a chart fetch error shows a retry state, never crashing the rest of the screen', async () => {
     mockApiClient.getKlines.mockRejectedValue(new Error('network down'));
     const { getByText } = await setup(activeBot);
