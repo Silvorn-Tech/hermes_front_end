@@ -340,6 +340,7 @@ describe('HermesApiClient — every call uses the session cookie, never a bearer
     ['pauseBot', 'pause'],
     ['resumeBot', 'resume'],
     ['stopBot', 'stop'],
+    ['activateBotLive', 'activate-live'],
   ] as const)('%s posts to /bots/{id}/%s with the idempotency key', async (method, path) => {
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockJsonResponse(200, { bot: null, status: 'REJECTED', reason: 'Trading is disabled.' }));
     await apiClient[method]('bot-1', 'key-3');
@@ -409,6 +410,34 @@ describe('HermesApiClient — Simulation Mode', () => {
     expect(url).toBe('https://hermes.test/bots/bot-1/portfolio');
   });
 
+  it('getBotPortfolio maps a 200 available response for a LIVE bot -- smaller field set, no cash/exposure', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        available: true,
+        execution_mode: 'LIVE',
+        quote_asset: 'USDT',
+        current_quantity: '0.0150000000',
+        position_value_quote: '750',
+        total_value_quote: '750',
+        return_pct: null,
+      })
+    );
+
+    const portfolio = await apiClient.getBotPortfolio('bot-1');
+
+    expect(portfolio).toEqual({
+      available: true,
+      executionMode: 'LIVE',
+      quoteAsset: 'USDT',
+      currentQuantity: 0.015,
+      positionValueQuote: 750,
+      totalValueQuote: 750,
+      returnPct: null,
+    });
+    expect(portfolio).not.toHaveProperty('cashBalanceQuote');
+    expect(portfolio).not.toHaveProperty('exposurePct');
+  });
+
   it('getBotPortfolio returns {available: false, reason} for a LIVE bot\'s 409, never throwing', async () => {
     (global.fetch as jest.Mock).mockResolvedValueOnce(
       mockJsonResponse(409, {
@@ -452,6 +481,35 @@ describe('HermesApiClient — Simulation Mode', () => {
       winRatePct: 66.67,
       exposurePct: 5,
     });
+  });
+
+  it('getBotPerformance maps a 200 available response for a LIVE bot -- no return/drawdown/exposure', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        available: true,
+        execution_mode: 'LIVE',
+        total_value_quote: '750',
+        return_pct: null,
+        max_drawdown_pct: null,
+        realized_pnl_today_quote: '10',
+        trade_count: 1,
+        win_rate_pct: '100',
+      })
+    );
+
+    const performance = await apiClient.getBotPerformance('bot-1');
+
+    expect(performance).toEqual({
+      available: true,
+      executionMode: 'LIVE',
+      totalValueQuote: 750,
+      returnPct: null,
+      maxDrawdownPct: null,
+      realizedPnlTodayQuote: 10,
+      tradeCount: 1,
+      winRatePct: 100,
+    });
+    expect(performance).not.toHaveProperty('exposurePct');
   });
 
   it('getBotPerformance returns {available: false, reason} for a LIVE bot\'s 409, never throwing', async () => {
