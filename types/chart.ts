@@ -23,10 +23,9 @@ export interface KlineData {
 }
 
 /**
- * GET /bots/{id}/trades — one FILLED simulation order, curated down to
- * just what the chart plots as an entry/exit marker. `available: false`
- * mirrors `BotPortfolio`/`BotPerformance`'s own convention for a LIVE
- * bot (no per-bot LIVE trade history view yet).
+ * GET /bots/{id}/trades — one FILLED order (SIMULATION or LIVE alike),
+ * curated down to just what the chart plots as an entry/exit marker.
+ * `available: false` only ever means the bot itself couldn't be found.
  */
 export interface BotTrade {
   side: 'BUY' | 'SELL';

@@ -162,11 +162,9 @@ export default function BotDetailScreen() {
           ) : null}
         </Section>
 
-        {bot.executionMode === 'SIMULATION' ? (
-          <Section title="Gráfico">
-            <PriceChart symbol={bot.instrument} botId={bot.id} refreshKey={bot.currentQuantity} />
-          </Section>
-        ) : null}
+        <Section title="Gráfico">
+          <PriceChart symbol={bot.instrument} botId={bot.id} refreshKey={bot.currentQuantity} />
+        </Section>
 
         <Section title="Configuración">
           <Card style={{ gap: spacing.sm }}>
