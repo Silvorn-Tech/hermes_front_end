@@ -200,6 +200,24 @@ describe('Bot detail — real pause/resume/stop', () => {
     await waitFor(() => expect(getByText(/Efectivo virtual/)).toBeTruthy());
   });
 
+  it('re-fetches the simulated portfolio when currentQuantity changes -- e.g. after a Resume fill', async () => {
+    // Regression test: SimulationPanel used to key its fetch effect only
+    // on botId, which never changes across pause/resume, so the card
+    // kept showing pre-fill numbers (full virtual cash, no position)
+    // even after the backend had already updated everything.
+    const pausedBot: Bot = { ...activeBot, status: 'PAUSED', currentQuantity: 0 };
+    mockUseHermesData.mockReturnValue(contextValue(pausedBot));
+    const { rerender } = await render(<BotDetailScreen />);
+
+    await waitFor(() => expect(mockApiClient.getBotPortfolio).toHaveBeenCalledTimes(1));
+
+    const activatedBot: Bot = { ...activeBot, status: 'ACTIVE', currentQuantity: 0.015 };
+    mockUseHermesData.mockReturnValue(contextValue(activatedBot));
+    await rerender(<BotDetailScreen />);
+
+    await waitFor(() => expect(mockApiClient.getBotPortfolio).toHaveBeenCalledTimes(2));
+  });
+
   it('Activar LIVE is visibly disabled and calls nothing when pressed', async () => {
     const { getByText, pauseBot, resumeBot, stopBot } = await setup(activeBot);
 
