@@ -4,6 +4,7 @@ import BotDetailScreen from '../../app/(app)/bots/[id]';
 import { useHermesData } from '../../hooks/HermesDataContext';
 import { apiClient } from '../../services/api';
 import { Bot } from '../../types';
+import { formatPrice } from '../../utils/format';
 
 const mockBack = jest.fn();
 const mockPush = jest.fn();
@@ -22,7 +23,12 @@ jest.mock('../../services/api', () => {
   const actual = jest.requireActual('../../services/api');
   return {
     ...actual,
-    apiClient: { getBotPortfolio: jest.fn(), getBotPerformance: jest.fn() },
+    apiClient: {
+      getBotPortfolio: jest.fn(),
+      getBotPerformance: jest.fn(),
+      getBotTrades: jest.fn(),
+      getKlines: jest.fn(),
+    },
   };
 });
 
@@ -52,6 +58,21 @@ const simulationPerformance = {
   tradeCount: 0,
   winRatePct: null,
   exposurePct: 7.5,
+};
+
+const botTrades = {
+  available: true as const,
+  executionMode: 'SIMULATION' as const,
+  trades: [],
+};
+
+const klineData = {
+  symbol: 'BTCUSDT',
+  interval: '15m',
+  candles: [
+    { openTime: 1700000000000, open: 49000, high: 49500, low: 48800, close: 49200, volume: 12.5, closeTime: 1700000899999 },
+    { openTime: 1700000900000, open: 49200, high: 50100, low: 49100, close: 50000, volume: 15.1, closeTime: 1700001799999 },
+  ],
 };
 
 const activeBot: Bot = {
@@ -94,6 +115,8 @@ beforeEach(() => {
   mockParams = { id: 'bot-1' };
   mockApiClient.getBotPortfolio.mockResolvedValue(simulationPortfolio);
   mockApiClient.getBotPerformance.mockResolvedValue(simulationPerformance);
+  mockApiClient.getBotTrades.mockResolvedValue(botTrades);
+  mockApiClient.getKlines.mockResolvedValue(klineData);
 });
 
 describe('Bot detail — real pause/resume/stop', () => {
@@ -237,5 +260,55 @@ describe('Bot detail — real pause/resume/stop', () => {
 
     await waitFor(() => expect(getByText('No se pudo cargar el portfolio simulado.')).toBeTruthy());
     expect(getByText('Reintentar')).toBeTruthy();
+  });
+});
+
+describe('Bot detail — price chart', () => {
+  it('is visible on the detail screen itself, not gated behind pressing Resume', async () => {
+    // Explicitly what the user asked for: the chart lives on the screen
+    // that has the Resume Bot button, not inside the confirmation dialog.
+    const pausedBot: Bot = { ...activeBot, status: 'PAUSED' };
+    const { getByText, queryByText } = await setup(pausedBot);
+
+    expect(getByText('GRÁFICO')).toBeTruthy();
+    expect(queryByText('Resuming this bot will open a new position using the target exposure saved when the bot was paused.')).toBeNull();
+    await waitFor(() => expect(mockApiClient.getKlines).toHaveBeenCalledWith('BTCUSDT', '15m', 80));
+  });
+
+  it('loads candles for the bot\'s own instrument and shows the current price', async () => {
+    const { getByText } = await setup(activeBot);
+
+    await waitFor(() => expect(mockApiClient.getKlines).toHaveBeenCalledWith('BTCUSDT', '15m', 80));
+    await waitFor(() => expect(getByText(formatPrice(50000))).toBeTruthy());
+  });
+
+  it('shows the entry/exit marker legend', async () => {
+    const { getByText } = await setup(activeBot);
+
+    await waitFor(() => expect(getByText('Entrada (compra)')).toBeTruthy());
+    expect(getByText('Salida (venta)')).toBeTruthy();
+  });
+
+  it('switching the interval chip re-fetches klines at the new interval', async () => {
+    const { getByText } = await setup(activeBot);
+    await waitFor(() => expect(mockApiClient.getKlines).toHaveBeenCalledWith('BTCUSDT', '15m', 80));
+
+    await fireEvent.press(getByText('1h'));
+
+    await waitFor(() => expect(mockApiClient.getKlines).toHaveBeenCalledWith('BTCUSDT', '1h', 80));
+  });
+
+  it('fetches the bot\'s trade markers, independent of the portfolio/performance fetches', async () => {
+    await setup(activeBot);
+    await waitFor(() => expect(mockApiClient.getBotTrades).toHaveBeenCalledWith('bot-1'));
+  });
+
+  it('a chart fetch error shows a retry state, never crashing the rest of the screen', async () => {
+    mockApiClient.getKlines.mockRejectedValue(new Error('network down'));
+    const { getByText } = await setup(activeBot);
+
+    await waitFor(() => expect(getByText('No se pudo cargar el gráfico.')).toBeTruthy());
+    // The rest of the screen (portfolio card) is unaffected by the chart's own failure.
+    await waitFor(() => expect(getByText(/Efectivo virtual/)).toBeTruthy());
   });
 });

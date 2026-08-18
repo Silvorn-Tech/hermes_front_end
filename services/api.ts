@@ -27,11 +27,14 @@ import {
   Bot,
   BotPerformance,
   BotPortfolio,
+  BotTrades,
+  Candle,
   ConnectBinanceCredentialsResult,
   EquityCurve,
   EquityPeriod,
   ExecutionMode,
   ExecutionVenue,
+  KlineData,
   Order,
   OrderSide,
   OrderType,
@@ -251,6 +254,37 @@ interface WireBotPerformanceAvailable {
 }
 
 type WireBotPerformance = WireBotPerformanceAvailable | WireNotAvailable;
+
+interface WireCandle {
+  open_time: number;
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+  volume: string;
+  close_time: number;
+}
+
+interface WireKlineData {
+  symbol: string;
+  interval: string;
+  candles: WireCandle[];
+}
+
+interface WireBotTrade {
+  side: 'BUY' | 'SELL';
+  fill_price: string | null;
+  executed_quantity: string;
+  terminal_at: string | null;
+}
+
+interface WireBotTradesAvailable {
+  available: true;
+  execution_mode: ExecutionMode;
+  trades: WireBotTrade[];
+}
+
+type WireBotTrades = WireBotTradesAvailable | WireNotAvailable;
 
 interface WireBot {
   id: string;
@@ -553,6 +587,45 @@ function mapBotPerformance(wire: WireBotPerformance): BotPerformance {
   };
 }
 
+function mapKlineData(wire: WireKlineData): KlineData {
+  return {
+    symbol: wire.symbol,
+    interval: wire.interval,
+    candles: wire.candles.map(
+      (candle): Candle => ({
+        openTime: candle.open_time,
+        open: toNumber(candle.open),
+        high: toNumber(candle.high),
+        low: toNumber(candle.low),
+        close: toNumber(candle.close),
+        volume: toNumber(candle.volume),
+        closeTime: candle.close_time,
+      })
+    ),
+  };
+}
+
+function mapBotTrades(wire: WireBotTrades): BotTrades {
+  if (!wire.available) {
+    return { available: false, reason: wire.reason };
+  }
+  return {
+    available: true,
+    executionMode: wire.execution_mode,
+    // A FILLED order always has a fill price -- this filter is a
+    // defensive no-op against the wire type's own nullability, not an
+    // expected runtime case.
+    trades: wire.trades
+      .filter((trade) => trade.fill_price !== null && trade.terminal_at !== null)
+      .map((trade) => ({
+        side: trade.side,
+        fillPrice: toNumber(trade.fill_price as string),
+        executedQuantity: toNumber(trade.executed_quantity),
+        terminalAt: trade.terminal_at as string,
+      })),
+  };
+}
+
 function mapBot(wire: WireBot): Bot {
   return {
     id: wire.id,
@@ -649,6 +722,8 @@ export interface HermesApiClient {
   getBot(id: string): Promise<Bot>;
   getBotPortfolio(id: string): Promise<BotPortfolio>;
   getBotPerformance(id: string): Promise<BotPerformance>;
+  getBotTrades(id: string): Promise<BotTrades>;
+  getKlines(symbol: string, interval: string, limit?: number): Promise<KlineData>;
   createBot(body: CreateBotRequest, idempotencyKey: string): Promise<BotActionResult>;
   updateBot(id: string, body: UpdateBotRequest, idempotencyKey: string): Promise<BotActionResult>;
   pauseBot(id: string, idempotencyKey: string): Promise<BotActionResult>;
@@ -775,6 +850,20 @@ class HermesApiClientImpl implements HermesApiClient {
       dataStatuses: [409],
     });
     return mapBotPerformance(wire);
+  }
+
+  async getBotTrades(id: string): Promise<BotTrades> {
+    const wire = await request<WireBotTrades>(`/bots/${encodeURIComponent(id)}/trades`, {
+      dataStatuses: [409],
+    });
+    return mapBotTrades(wire);
+  }
+
+  async getKlines(symbol: string, interval: string, limit?: number): Promise<KlineData> {
+    const wire = await request<WireKlineData>('/klines', {
+      query: { symbol, interval, limit: limit !== undefined ? String(limit) : undefined },
+    });
+    return mapKlineData(wire);
   }
 
   async createBot(body: CreateBotRequest, idempotencyKey: string): Promise<BotActionResult> {

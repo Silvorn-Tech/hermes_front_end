@@ -1,6 +1,7 @@
 export * from './common';
 export * from './portfolio';
 export * from './bot';
+export * from './chart';
 export * from './position';
 export * from './order';
 export * from './signal';

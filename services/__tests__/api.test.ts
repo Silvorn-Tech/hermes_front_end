@@ -469,6 +469,74 @@ describe('HermesApiClient — Simulation Mode', () => {
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockJsonResponse(500, { detail: 'boom' }));
     await expect(apiClient.getBotPortfolio('bot-1')).rejects.toMatchObject({ status: 500 });
   });
+
+  it('getBotTrades maps a 200 available response, dropping nothing from a FILLED order', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        available: true,
+        execution_mode: 'SIMULATION',
+        trades: [
+          { side: 'BUY', fill_price: '50000', executed_quantity: '0.02', terminal_at: '2026-08-17T12:00:00Z' },
+          { side: 'SELL', fill_price: '51000', executed_quantity: '0.02', terminal_at: '2026-08-17T13:00:00Z' },
+        ],
+      })
+    );
+
+    const trades = await apiClient.getBotTrades('bot-1');
+
+    expect(trades).toEqual({
+      available: true,
+      executionMode: 'SIMULATION',
+      trades: [
+        { side: 'BUY', fillPrice: 50000, executedQuantity: 0.02, terminalAt: '2026-08-17T12:00:00Z' },
+        { side: 'SELL', fillPrice: 51000, executedQuantity: 0.02, terminalAt: '2026-08-17T13:00:00Z' },
+      ],
+    });
+  });
+
+  it('getBotTrades returns {available: false, reason} for a LIVE bot\'s 409, never throwing', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(409, {
+        detail: { available: false, reason: 'This view is only available for SIMULATION bots.' },
+      })
+    );
+
+    const trades = await apiClient.getBotTrades('bot-1');
+    expect(trades.available).toBe(false);
+  });
+
+  it('getKlines maps decimal-string candle fields and passes symbol/interval/limit as query params', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        symbol: 'BTCUSDT',
+        interval: '15m',
+        candles: [
+          {
+            open_time: 1700000000000,
+            open: '49000',
+            high: '49500',
+            low: '48800',
+            close: '49200',
+            volume: '12.5',
+            close_time: 1700000899999,
+          },
+        ],
+      })
+    );
+
+    const klines = await apiClient.getKlines('BTCUSDT', '15m', 80);
+
+    expect(klines).toEqual({
+      symbol: 'BTCUSDT',
+      interval: '15m',
+      candles: [
+        { openTime: 1700000000000, open: 49000, high: 49500, low: 48800, close: 49200, volume: 12.5, closeTime: 1700000899999 },
+      ],
+    });
+
+    const [url] = lastCall();
+    expect(url).toBe('https://hermes.test/klines?symbol=BTCUSDT&interval=15m&limit=80');
+  });
 });
 
 describe('HermesApiClient — Settings (per-user Binance credentials, risk limits, trading switch)', () => {
