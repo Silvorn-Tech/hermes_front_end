@@ -28,6 +28,7 @@ jest.mock('../../services/api', () => {
       getBotPerformance: jest.fn(),
       getBotTrades: jest.fn(),
       getKlines: jest.fn(),
+      getBinanceCredentialStatus: jest.fn(),
     },
   };
 });
@@ -93,12 +94,36 @@ const activeBot: Bot = {
   updatedAt: new Date().toISOString(),
 };
 
+const liveBotPortfolio = {
+  available: true as const,
+  executionMode: 'LIVE' as const,
+  quoteAsset: 'USDT',
+  currentQuantity: 0.015,
+  positionValueQuote: 750,
+  totalValueQuote: 750,
+  returnPct: null,
+};
+
+const liveBotPerformance = {
+  available: true as const,
+  executionMode: 'LIVE' as const,
+  totalValueQuote: 750,
+  returnPct: null,
+  maxDrawdownPct: null,
+  realizedPnlTodayQuote: 0,
+  tradeCount: 0,
+  winRatePct: null,
+};
+
 function contextValue(bot: Bot, overrides: Record<string, jest.Mock> = {}) {
   return {
     bots: [bot],
     pauseBot: jest.fn().mockResolvedValue({ bot: { ...bot, status: 'PAUSED' }, status: 'PAUSED', reason: null }),
     resumeBot: jest.fn().mockResolvedValue({ bot: { ...bot, status: 'ACTIVE' }, status: 'ACTIVE', reason: null }),
     stopBot: jest.fn().mockResolvedValue({ bot: { ...bot, status: 'STOPPED' }, status: 'STOPPED', reason: null }),
+    activateBotLive: jest
+      .fn()
+      .mockResolvedValue({ bot: { ...bot, executionMode: 'LIVE' }, status: 'PAUSED', reason: null }),
     ...overrides,
   };
 }
@@ -117,6 +142,12 @@ beforeEach(() => {
   mockApiClient.getBotPerformance.mockResolvedValue(simulationPerformance);
   mockApiClient.getBotTrades.mockResolvedValue(botTrades);
   mockApiClient.getKlines.mockResolvedValue(klineData);
+  mockApiClient.getBinanceCredentialStatus.mockResolvedValue({
+    configured: false,
+    apiKeyLast4: null,
+    verifiedAt: null,
+    updatedAt: null,
+  });
 });
 
 describe('Bot detail — real pause/resume/stop', () => {
@@ -241,17 +272,67 @@ describe('Bot detail — real pause/resume/stop', () => {
     await waitFor(() => expect(mockApiClient.getBotPortfolio).toHaveBeenCalledTimes(2));
   });
 
-  it('Activar LIVE is visibly disabled and calls nothing when pressed', async () => {
-    const { getByText, pauseBot, resumeBot, stopBot } = await setup(activeBot);
+  it('Activar LIVE prompts to connect Binance first when no account is connected', async () => {
+    mockApiClient.getBinanceCredentialStatus.mockResolvedValue({
+      configured: false,
+      apiKeyLast4: null,
+      verifiedAt: null,
+      updatedAt: null,
+    });
+    const pausedBot: Bot = { ...activeBot, status: 'PAUSED', currentQuantity: 0 };
+    const { getByText, activateBotLive } = await setup(pausedBot);
 
-    expect(getByText(/estará disponible en una próxima versión/)).toBeTruthy();
+    await waitFor(() =>
+      expect(getByText('Conectá tu cuenta de Binance en Settings antes de activar LIVE.')).toBeTruthy()
+    );
+    expect(activateBotLive).not.toHaveBeenCalled();
+  });
+
+  it('Activar LIVE is disabled with a reason while the bot is not PAUSED', async () => {
+    mockApiClient.getBinanceCredentialStatus.mockResolvedValue({
+      configured: true,
+      apiKeyLast4: '1234',
+      verifiedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    const { getByText } = await setup(activeBot); // status: 'ACTIVE'
+
+    await waitFor(() =>
+      expect(getByText('Solo se puede activar LIVE mientras el bot está Pausado.')).toBeTruthy()
+    );
+  });
+
+  it('activating LIVE shows the irreversible warning and calls activateBotLive on confirm', async () => {
+    mockApiClient.getBinanceCredentialStatus.mockResolvedValue({
+      configured: true,
+      apiKeyLast4: '1234',
+      verifiedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    const pausedBot: Bot = { ...activeBot, status: 'PAUSED', currentQuantity: 0 };
+    const { activateBotLive, getByText, getAllByText } = await setup(pausedBot);
+
+    await waitFor(() => expect(getByText('Activar LIVE')).toBeTruthy());
     await fireEvent.press(getByText('Activar LIVE'));
 
-    // No new action was attempted -- pause/resume/stop are the only real
-    // mutations this screen can trigger, and none of them fired.
-    expect(pauseBot).not.toHaveBeenCalled();
-    expect(resumeBot).not.toHaveBeenCalled();
-    expect(stopBot).not.toHaveBeenCalled();
+    expect(getByText(/NO se puede deshacer/)).toBeTruthy();
+
+    const confirmButtons = getAllByText(/Activar LIVE|Activando…/);
+    await fireEvent.press(confirmButtons[confirmButtons.length - 1]);
+
+    await waitFor(() => expect(activateBotLive).toHaveBeenCalledWith('bot-1', expect.any(String)));
+  });
+
+  it('shows the real portfolio (LivePanel), never SimulationPanel, for a LIVE bot', async () => {
+    mockApiClient.getBotPortfolio.mockResolvedValue(liveBotPortfolio);
+    mockApiClient.getBotPerformance.mockResolvedValue(liveBotPerformance);
+    const liveBot: Bot = { ...activeBot, executionMode: 'LIVE' };
+    const { getByText, queryByText } = await setup(liveBot);
+
+    expect(getByText('🔴 Live')).toBeTruthy();
+    await waitFor(() => expect(getByText('Valor de posición (real)')).toBeTruthy());
+    expect(queryByText(/Efectivo virtual/)).toBeNull();
+    expect(queryByText('Activar LIVE')).toBeNull(); // no promotion control once already LIVE
   });
 
   it('a simulated portfolio fetch error shows a retry state, never a crash', async () => {

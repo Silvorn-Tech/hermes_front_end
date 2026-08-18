@@ -525,14 +525,14 @@ export default function BotFormScreen() {
             <OptionCard
               title="🔴 Live"
               description="Operar con dinero real."
-              badge="La activación de Live estará disponible en una próxima versión."
+              badge="Activá Live desde el detalle del bot, una vez que esté probado en Simulación."
               selected={false}
               disabled
               onPress={() => {}}
             />
           </View>
           <Text variant="caption" color="muted">
-            Todo bot nuevo se crea en modo Simulación. No hay forma de crear un bot Live todavía.
+            Todo bot nuevo se crea en Simulación — activá Live más tarde, desde el bot ya creado y pausado.
           </Text>
         </View>
 

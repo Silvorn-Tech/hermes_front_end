@@ -172,16 +172,28 @@ describe('Settings — Binance account', () => {
   });
 
   it('submits the typed key/secret and shows the connected state on success', async () => {
-    mockApiClient.getBinanceCredentialStatus.mockResolvedValue({
-      configured: false,
-      apiKeyLast4: null,
-      verifiedAt: null,
-      updatedAt: null,
-    });
+    const verifiedAt = new Date().toISOString();
+    // The component re-fetches via reload() after a successful connect
+    // (rather than trusting the connect response's own fields directly),
+    // so the mock must reflect the real before/after sequence: not
+    // configured on the initial load, configured on every call after.
+    mockApiClient.getBinanceCredentialStatus
+      .mockResolvedValueOnce({
+        configured: false,
+        apiKeyLast4: null,
+        verifiedAt: null,
+        updatedAt: null,
+      })
+      .mockResolvedValue({
+        configured: true,
+        apiKeyLast4: '5678',
+        verifiedAt,
+        updatedAt: verifiedAt,
+      });
     mockApiClient.connectBinanceCredentials.mockResolvedValue({
       connected: true,
       apiKeyLast4: '5678',
-      verifiedAt: new Date().toISOString(),
+      verifiedAt,
     });
 
     const { getByText, getByPlaceholderText } = await render(<SettingsScreen />);

@@ -221,9 +221,9 @@ interface WireSimulationConfig {
   quote_asset: string;
 }
 
-interface WireBotPortfolioAvailable {
+interface WireBotPortfolioSimulation {
   available: true;
-  execution_mode: ExecutionMode;
+  execution_mode: 'SIMULATION';
   quote_asset: string;
   initial_capital_quote: string;
   cash_balance_quote: string;
@@ -234,16 +234,26 @@ interface WireBotPortfolioAvailable {
   return_pct: string | null;
 }
 
+interface WireBotPortfolioLive {
+  available: true;
+  execution_mode: 'LIVE';
+  quote_asset: string;
+  current_quantity: string;
+  position_value_quote: string;
+  total_value_quote: string;
+  return_pct: null;
+}
+
 interface WireNotAvailable {
   available: false;
   reason: string;
 }
 
-type WireBotPortfolio = WireBotPortfolioAvailable | WireNotAvailable;
+type WireBotPortfolio = WireBotPortfolioSimulation | WireBotPortfolioLive | WireNotAvailable;
 
-interface WireBotPerformanceAvailable {
+interface WireBotPerformanceSimulation {
   available: true;
-  execution_mode: ExecutionMode;
+  execution_mode: 'SIMULATION';
   total_value_quote: string;
   return_pct: string | null;
   max_drawdown_pct: string | null;
@@ -253,7 +263,18 @@ interface WireBotPerformanceAvailable {
   exposure_pct: string;
 }
 
-type WireBotPerformance = WireBotPerformanceAvailable | WireNotAvailable;
+interface WireBotPerformanceLive {
+  available: true;
+  execution_mode: 'LIVE';
+  total_value_quote: string;
+  return_pct: null;
+  max_drawdown_pct: null;
+  realized_pnl_today_quote: string;
+  trade_count: number;
+  win_rate_pct: string | null;
+}
+
+type WireBotPerformance = WireBotPerformanceSimulation | WireBotPerformanceLive | WireNotAvailable;
 
 interface WireCandle {
   open_time: number;
@@ -556,9 +577,20 @@ function mapBotPortfolio(wire: WireBotPortfolio): BotPortfolio {
   if (!wire.available) {
     return { available: false, reason: wire.reason };
   }
+  if (wire.execution_mode === 'LIVE') {
+    return {
+      available: true,
+      executionMode: 'LIVE',
+      quoteAsset: wire.quote_asset,
+      currentQuantity: toNumber(wire.current_quantity),
+      positionValueQuote: toNumber(wire.position_value_quote),
+      totalValueQuote: toNumber(wire.total_value_quote),
+      returnPct: null,
+    };
+  }
   return {
     available: true,
-    executionMode: wire.execution_mode,
+    executionMode: 'SIMULATION',
     quoteAsset: wire.quote_asset,
     initialCapitalQuote: toNumber(wire.initial_capital_quote),
     cashBalanceQuote: toNumber(wire.cash_balance_quote),
@@ -574,9 +606,21 @@ function mapBotPerformance(wire: WireBotPerformance): BotPerformance {
   if (!wire.available) {
     return { available: false, reason: wire.reason };
   }
+  if (wire.execution_mode === 'LIVE') {
+    return {
+      available: true,
+      executionMode: 'LIVE',
+      totalValueQuote: toNumber(wire.total_value_quote),
+      returnPct: null,
+      maxDrawdownPct: null,
+      realizedPnlTodayQuote: toNumber(wire.realized_pnl_today_quote),
+      tradeCount: wire.trade_count,
+      winRatePct: toNullableNumber(wire.win_rate_pct),
+    };
+  }
   return {
     available: true,
-    executionMode: wire.execution_mode,
+    executionMode: 'SIMULATION',
     totalValueQuote: toNumber(wire.total_value_quote),
     returnPct: toNullableNumber(wire.return_pct),
     maxDrawdownPct: toNullableNumber(wire.max_drawdown_pct),
@@ -730,6 +774,7 @@ export interface HermesApiClient {
   resumeBot(id: string, idempotencyKey: string): Promise<BotActionResult>;
   stopBot(id: string, idempotencyKey: string): Promise<BotActionResult>;
   deleteBot(id: string, idempotencyKey: string): Promise<BotActionResult>;
+  activateBotLive(id: string, idempotencyKey: string): Promise<BotActionResult>;
   getBinanceCredentialStatus(): Promise<BinanceCredentialStatus>;
   connectBinanceCredentials(
     body: ConnectBinanceCredentialsRequest,
@@ -931,6 +976,14 @@ class HermesApiClientImpl implements HermesApiClient {
       method: 'DELETE',
       idempotencyKey,
     });
+    return mapBotActionResult(wire);
+  }
+
+  async activateBotLive(id: string, idempotencyKey: string): Promise<BotActionResult> {
+    const wire = await request<WireBotActionResult>(
+      `/bots/${encodeURIComponent(id)}/activate-live`,
+      { method: 'POST', idempotencyKey }
+    );
     return mapBotActionResult(wire);
   }
 

@@ -17,11 +17,11 @@ export type RiskProfile = 'SENTINEL' | 'EQUILIBRIUM' | 'VORTEX';
 export type AssetClass = 'CRYPTO' | 'EQUITY';
 export type ExecutionVenue = 'BINANCE';
 
-/** Matches the backend's `BotExecutionMode` exactly. Every bot created by
- * this app is `SIMULATION` — there is no request field or UI path that can
- * set `LIVE` yet; the backend enforces this independently (`POST /bots`'s
- * schema has no `execution_mode` field at all), so this type exists only
- * to render the distinction, never to select it. */
+/** Matches the backend's `BotExecutionMode` exactly. Every bot is created
+ * `SIMULATION` — `POST /bots`'s schema has no `execution_mode` field at
+ * all. `LIVE` is reached only by promoting an already-created, already-
+ * paused SIMULATION bot via `POST /bots/{id}/activate-live` — a one-way
+ * action with no reversal. */
 export type ExecutionMode = 'SIMULATION' | 'LIVE';
 
 /** The backend stores this as a free string (not an enum) — a strategy/
@@ -69,17 +69,24 @@ export interface SimulationConfig {
 }
 
 /**
- * GET /bots/{id}/portfolio — a SIMULATION bot's own virtual ledger.
- * Never summed with the real account's `Portfolio` — a different bot,
- * a different (virtual) balance sheet entirely. `available` is `false`
- * (with no other field populated) for a `LIVE` bot: there is no
- * per-bot LIVE portfolio view yet, so the UI must show "not available",
- * never a fabricated value.
+ * GET /bots/{id}/portfolio — discriminated on `executionMode` as well as
+ * `available`, because a LIVE bot's shape is genuinely smaller, not just
+ * a SIMULATION shape with fields zeroed out: `initialCapitalQuote`/
+ * `cashBalanceQuote`/`exposurePct` describe a per-bot virtual-bankroll
+ * concept that has no LIVE equivalent at all — a LIVE bot trades
+ * directly against the user's one shared real Binance balance, so there
+ * is no ring-fenced capital to compute cash/exposure against. Making
+ * that a type error (reading a field that doesn't exist on the LIVE
+ * branch) beats nulling those fields forever, which would give `null` a
+ * confusing double meaning ("not yet computed" vs. "doesn't exist").
+ * `available: false` still means what it always did: this bot's mode has
+ * no view at all (not currently reachable, kept for forward
+ * compatibility with the backend's own shape).
  */
 export type BotPortfolio =
   | {
       available: true;
-      executionMode: ExecutionMode;
+      executionMode: 'SIMULATION';
       quoteAsset: string;
       initialCapitalQuote: number;
       cashBalanceQuote: number;
@@ -89,19 +96,32 @@ export type BotPortfolio =
       exposurePct: number;
       returnPct: number | null;
     }
+  | {
+      available: true;
+      executionMode: 'LIVE';
+      quoteAsset: string;
+      currentQuantity: number;
+      positionValueQuote: number;
+      totalValueQuote: number;
+      returnPct: null;
+    }
   | { available: false; reason: string };
 
 /**
  * GET /bots/{id}/performance — return %, drawdown, today's realized P&L,
- * trade count, and win rate for a SIMULATION bot's virtual ledger.
- * `maxDrawdownPct`/`winRatePct` are null (never a fabricated 0) when
- * there isn't yet enough history to compute them — same rule the
- * account-wide `EquityCurve` already follows.
+ * trade count, and win rate. Same discriminated-union reasoning as
+ * `BotPortfolio` above: LIVE has no `exposurePct` (no ring-fenced
+ * capital), and `returnPct`/`maxDrawdownPct` are always `null` for LIVE
+ * in this phase — no per-bot capital baseline or time-series snapshot
+ * table exists yet to compute them against (a real, separate, larger
+ * follow-up, not a temporary gap). `winRatePct` is `null` (never a
+ * fabricated 0) when there aren't yet any closed round-trips to judge,
+ * for both modes.
  */
 export type BotPerformance =
   | {
       available: true;
-      executionMode: ExecutionMode;
+      executionMode: 'SIMULATION';
       totalValueQuote: number;
       returnPct: number | null;
       maxDrawdownPct: number | null;
@@ -109,5 +129,15 @@ export type BotPerformance =
       tradeCount: number;
       winRatePct: number | null;
       exposurePct: number;
+    }
+  | {
+      available: true;
+      executionMode: 'LIVE';
+      totalValueQuote: number;
+      returnPct: null;
+      maxDrawdownPct: null;
+      realizedPnlTodayQuote: number;
+      tradeCount: number;
+      winRatePct: number | null;
     }
   | { available: false; reason: string };

@@ -10,8 +10,10 @@ import { Button } from '../../../components/common/Button';
 import { EmptyState } from '../../../components/common/EmptyState';
 import { ConfirmDialog } from '../../../components/common/ConfirmDialog';
 import { SimulationPanel } from '../../../components/bots/SimulationPanel';
+import { LivePanel } from '../../../components/bots/LivePanel';
 import { PriceChart } from '../../../components/bots/PriceChart';
 import { useHermesData } from '../../../hooks/HermesDataContext';
+import { useBinanceAccountStatus } from '../../../hooks/useBinanceAccountStatus';
 import { colors, spacing } from '../../../constants';
 import { generateIdempotencyKey } from '../../../services/idempotency';
 import { getErrorMessage, getRejectionMessage } from '../../../services/errorMessages';
@@ -37,12 +39,13 @@ const venueLabel = { BINANCE: 'Binance' } as const;
 // Text-and-emoji, never color-only -- see BotCard.tsx's own executionModeLabel.
 const executionModeLabel = { SIMULATION: '🧪 Simulación', LIVE: '🔴 Live' } as const;
 
-type Action = 'pause' | 'resume' | 'stop';
+type Action = 'pause' | 'resume' | 'stop' | 'activate-live';
 
 export default function BotDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { bots, pauseBot, resumeBot, stopBot } = useHermesData();
+  const { bots, pauseBot, resumeBot, stopBot, activateBotLive } = useHermesData();
+  const binanceStatus = useBinanceAccountStatus();
 
   const [confirmAction, setConfirmAction] = useState<Action | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,6 +55,7 @@ export default function BotDetailScreen() {
   const [pauseKey, setPauseKey] = useState(() => generateIdempotencyKey());
   const [resumeKey, setResumeKey] = useState(() => generateIdempotencyKey());
   const [stopKey, setStopKey] = useState(() => generateIdempotencyKey());
+  const [activateLiveKey, setActivateLiveKey] = useState(() => generateIdempotencyKey());
 
   const bot = bots.find((b) => b.id === id);
 
@@ -76,8 +80,10 @@ export default function BotDetailScreen() {
         result = await pauseBot(bot.id, pauseKey);
       } else if (action === 'resume') {
         result = await resumeBot(bot.id, resumeKey);
-      } else {
+      } else if (action === 'stop') {
         result = await stopBot(bot.id, stopKey);
+      } else {
+        result = await activateBotLive(bot.id, activateLiveKey);
       }
 
       if (result.status === 'REJECTED') {
@@ -93,6 +99,7 @@ export default function BotDetailScreen() {
         if (action === 'pause') setPauseKey(generateIdempotencyKey());
         if (action === 'resume') setResumeKey(generateIdempotencyKey());
         if (action === 'stop') setStopKey(generateIdempotencyKey());
+        if (action === 'activate-live') setActivateLiveKey(generateIdempotencyKey());
       }
     } catch (error) {
       setSubmitError(getErrorMessage(error));
@@ -102,6 +109,9 @@ export default function BotDetailScreen() {
   };
 
   const confirmLabelFor = (action: Action) => {
+    if (action === 'activate-live') {
+      return isSubmitting ? 'Activando…' : 'Activar LIVE';
+    }
     if (!isSubmitting) {
       return action === 'pause' ? 'Pause Bot' : action === 'resume' ? 'Resume Bot' : 'Detener';
     }
@@ -197,19 +207,51 @@ export default function BotDetailScreen() {
           <Section title="Portfolio simulado">
             <SimulationPanel botId={bot.id} refreshKey={bot.currentQuantity} />
           </Section>
-        ) : null}
+        ) : (
+          <Section title="Portfolio (real)">
+            <LivePanel botId={bot.id} refreshKey={bot.currentQuantity} />
+          </Section>
+        )}
 
-        <Section title="Live trading">
-          <Card style={{ gap: spacing.sm }}>
-            <Text variant="body" color="secondary">
-              Este bot opera en modo Simulación con dinero virtual. La activación de trading en vivo (dinero real)
-              estará disponible en una próxima versión.
-            </Text>
-            {/* disabled=true makes Pressable's onPress unreachable — this
-                never calls anything, exactly like the copy above says. */}
-            <Button label="Activar LIVE" variant="secondary" onPress={() => {}} disabled fullWidth />
-          </Card>
-        </Section>
+        {bot.executionMode === 'SIMULATION' ? (
+          <Section title="Live trading">
+            <Card style={{ gap: spacing.sm }}>
+              <Text variant="body" color="secondary">
+                Este bot opera en modo Simulación con dinero virtual. Activar LIVE lo pasa a operar con dinero
+                real de tu cuenta de Binance conectada — de forma permanente, no se puede revertir.
+              </Text>
+              {binanceStatus.status === 'loading' ? (
+                <Button label="Cargando estado de tu cuenta…" variant="secondary" onPress={() => {}} disabled fullWidth />
+              ) : binanceStatus.status !== 'connected' ? (
+                <>
+                  <Text variant="caption" color="muted">
+                    Conectá tu cuenta de Binance en Settings antes de activar LIVE.
+                  </Text>
+                  <Button
+                    label="Ir a Settings"
+                    variant="secondary"
+                    onPress={() => router.push('/settings' as any)}
+                    fullWidth
+                  />
+                </>
+              ) : bot.status !== 'PAUSED' ? (
+                <>
+                  <Text variant="caption" color="muted">
+                    Solo se puede activar LIVE mientras el bot está Pausado.
+                  </Text>
+                  <Button label="Activar LIVE" variant="secondary" onPress={() => {}} disabled fullWidth />
+                </>
+              ) : (
+                <Button
+                  label="Activar LIVE"
+                  variant="secondary"
+                  onPress={() => setConfirmAction('activate-live')}
+                  fullWidth
+                />
+              )}
+            </Card>
+          </Section>
+        ) : null}
 
         <Section title="Exposure">
           <Card style={{ gap: spacing.sm }}>
@@ -262,6 +304,18 @@ export default function BotDetailScreen() {
         confirmLabel={confirmLabelFor('resume')}
         onConfirm={() => {
           if (!isSubmitting) void runAction('resume');
+        }}
+        onCancel={() => setConfirmAction(null)}
+      />
+
+      <ConfirmDialog
+        visible={confirmAction === 'activate-live'}
+        title="Activar LIVE"
+        description={`${bot.name} empezará a operar con dinero REAL de tu cuenta de Binance conectada. Esta acción NO se puede deshacer — un bot LIVE nunca vuelve a Simulación.`}
+        confirmLabel={confirmLabelFor('activate-live')}
+        destructive
+        onConfirm={() => {
+          if (!isSubmitting) void runAction('activate-live');
         }}
         onCancel={() => setConfirmAction(null)}
       />

@@ -67,6 +67,7 @@ interface HermesDataValue {
   resumeBot: (botId: string, idempotencyKey: string) => Promise<BotActionResult>;
   stopBot: (botId: string, idempotencyKey: string) => Promise<BotActionResult>;
   deleteBot: (botId: string, idempotencyKey: string) => Promise<BotActionResult>;
+  activateBotLive: (botId: string, idempotencyKey: string) => Promise<BotActionResult>;
 }
 
 const HermesDataContext = createContext<HermesDataValue | undefined>(undefined);
@@ -317,6 +318,20 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
     [refreshBots, handlePotential401]
   );
 
+  const activateBotLive = useCallback(
+    async (botId: string, idempotencyKey: string) => {
+      try {
+        const result = await apiClient.activateBotLive(botId, idempotencyKey);
+        await refreshBots();
+        return result;
+      } catch (error) {
+        handlePotential401(error);
+        throw error;
+      }
+    },
+    [refreshBots, handlePotential401]
+  );
+
   const realExposure = useMemo<RealExposure>(() => {
     if (!portfolio || portfolio.totalValueQuote <= 0) {
       return { totalPct: null, bySymbol: [] };
@@ -364,6 +379,7 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
       resumeBot,
       stopBot,
       deleteBot,
+      activateBotLive,
     }),
     [
       status,
@@ -390,6 +406,7 @@ export function HermesDataProvider({ children }: { children: React.ReactNode }) 
       resumeBot,
       stopBot,
       deleteBot,
+      activateBotLive,
     ]
   );
 

@@ -124,7 +124,9 @@ describe('Bot create form — matches the approved prototype, wired to the real 
   it('Live is visibly disabled and never selectable — every bot this form creates is SIMULATION', async () => {
     const { getByText, getAllByText } = await render(<BotFormScreen />);
 
-    expect(getByText('La activación de Live estará disponible en una próxima versión.')).toBeTruthy();
+    expect(
+      getByText('Activá Live desde el detalle del bot, una vez que esté probado en Simulación.')
+    ).toBeTruthy();
 
     await fireEvent.press(getByText('🔴 Live'));
     // Still shows Simulación in the summary -- pressing the disabled Live

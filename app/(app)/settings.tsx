@@ -9,6 +9,7 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { colors, radius, spacing } from '../../constants';
 import { useAuth } from '../../hooks/AuthContext';
+import { useBinanceAccountStatus } from '../../hooks/useBinanceAccountStatus';
 import { SimulationConfig, SimulationRiskLimits, UserRiskLimits } from '../../types';
 import { apiClient } from '../../services/api';
 import { generateIdempotencyKey } from '../../services/idempotency';
@@ -159,17 +160,13 @@ function TradingSafetySection() {
   );
 }
 
-type BinanceStatus = 'loading' | 'not-connected' | 'connected' | 'failed';
-
 /** Self-fetching: the first credential-input UI in this app. Never
  * receives the plaintext key/secret back — only `apiKeyLast4` (a
  * credit-card-style masked hint) is ever returned after the initial
  * submission. Hermes verifies the key against Binance itself (rejecting
  * one with withdrawals enabled) before persisting anything. */
 function BinanceAccountSection() {
-  const [status, setStatus] = useState<BinanceStatus>('loading');
-  const [apiKeyLast4, setApiKeyLast4] = useState<string | null>(null);
-  const [verifiedAt, setVerifiedAt] = useState<string | null>(null);
+  const { status, apiKeyLast4, verifiedAt, reload } = useBinanceAccountStatus();
 
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
@@ -181,35 +178,13 @@ function BinanceAccountSection() {
 
   const [idempotencyKey, setIdempotencyKey] = useState(() => generateIdempotencyKey());
 
-  const load = useCallback(() => {
-    setStatus('loading');
-    apiClient
-      .getBinanceCredentialStatus()
-      .then((result) => {
-        if (result.configured) {
-          setApiKeyLast4(result.apiKeyLast4);
-          setVerifiedAt(result.verifiedAt);
-          setStatus('connected');
-        } else {
-          setStatus('not-connected');
-        }
-      })
-      .catch(() => setStatus('failed'));
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
   const handleConnect = async () => {
     setConnecting(true);
     setConnectError(null);
     try {
       const result = await apiClient.connectBinanceCredentials({ apiKey, apiSecret }, idempotencyKey);
       if (result.connected) {
-        setApiKeyLast4(result.apiKeyLast4);
-        setVerifiedAt(result.verifiedAt);
-        setStatus('connected');
+        reload();
         setApiKey('');
         setApiSecret('');
       } else {
@@ -228,9 +203,7 @@ function BinanceAccountSection() {
     setDisconnecting(true);
     try {
       await apiClient.disconnectBinanceCredentials(idempotencyKey);
-      setApiKeyLast4(null);
-      setVerifiedAt(null);
-      setStatus('not-connected');
+      reload();
       setIdempotencyKey(generateIdempotencyKey());
     } catch (error) {
       setConnectError(getErrorMessage(error));
@@ -252,7 +225,7 @@ function BinanceAccountSection() {
 
   if (status === 'failed') {
     return (
-      <ErrorState title="No se pudo cargar el estado de tu cuenta de Binance." onRetry={load} />
+      <ErrorState title="No se pudo cargar el estado de tu cuenta de Binance." onRetry={reload} />
     );
   }
 
