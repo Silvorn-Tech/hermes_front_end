@@ -188,7 +188,7 @@ export default function BotDetailScreen() {
 
         {bot.executionMode === 'SIMULATION' ? (
           <Section title="Portfolio simulado">
-            <SimulationPanel botId={bot.id} />
+            <SimulationPanel botId={bot.id} refreshKey={bot.currentQuantity} />
           </Section>
         ) : null}
 

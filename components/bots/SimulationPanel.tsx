@@ -33,8 +33,16 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: stri
  * ever rendered for a SIMULATION bot (see BotDetailScreen); a LIVE bot's
  * 409 `{available: false}` response is handled here too, defensively, in
  * case that ever changes.
+ *
+ * `refreshKey` must change whenever a fill could have happened (pause/
+ * resume) — `botId` alone never does, since it's the same bot before and
+ * after a Resume, so without this the card kept showing whatever it
+ * fetched on first mount (e.g. $10,000 cash, $0 position) even after a
+ * real fill updated the backend's numbers. `BotDetailScreen` passes
+ * `bot.currentQuantity`, the one field that reliably changes exactly when
+ * a fill does.
  */
-export function SimulationPanel({ botId }: { botId: string }) {
+export function SimulationPanel({ botId, refreshKey }: { botId: string; refreshKey?: string | number }) {
   const [status, setStatus] = useState<Status>('loading');
   const [portfolio, setPortfolio] = useState<BotPortfolio | null>(null);
   const [performance, setPerformance] = useState<BotPerformance | null>(null);
@@ -62,7 +70,7 @@ export function SimulationPanel({ botId }: { botId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [botId, retryToken]);
+  }, [botId, refreshKey, retryToken]);
 
   if (status === 'loading') {
     return <SkeletonCard lines={4} />;
