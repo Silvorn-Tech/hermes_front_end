@@ -28,7 +28,7 @@ readonly TAILSCALE_HTTPS_PORT="8443"
 # enough that nobody stumbles onto it by chance. Subscribe from the
 # ntfy app/https://ntfy.sh/<topic> to receive these. Rotate by changing
 # this constant and re-running this script (idempotent).
-readonly NTFY_TOPIC="hermes-deploys-600e21984f3a"
+readonly NTFY_TOPIC="hermes-deploys-389525f241fb"
 
 mkdir -p "$APP_DIR"
 
@@ -58,7 +58,7 @@ readonly CONTAINER_NAME="hermes-front-end"
 readonly IMAGE="ghcr.io/silvorn-tech/hermes_front_end:latest"
 readonly PRE_DEPLOY_HOOK="/opt/hermes-front-end/can-deploy"
 readonly LOCK_FILE="/run/hermes-front-end-deploy/deploy.lock"
-readonly NTFY_TOPIC="hermes-deploys-600e21984f3a"
+readonly NTFY_TOPIC="hermes-deploys-389525f241fb"
 
 log() {
   printf '%s %s\n' "$(/usr/bin/date --iso-8601=seconds)" "$*"
